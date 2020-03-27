@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brave-experiments/sync-server/controller"
+	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-intl/bat-go/middleware"
 	"github.com/getsentry/raven-go"
 	"github.com/go-chi/chi"
@@ -54,7 +55,14 @@ func setupRouter(ctx context.Context, logger *zerolog.Logger) (context.Context, 
 		r.Use(middleware.RequestLogger(logger))
 	}
 
-	r.Mount("/v2/", controller.SyncRouter())
+	pg, err := datastore.NewPostgres()
+	if err != nil {
+		fmt.Println("WTF, error = ", err.Error())
+		raven.CaptureErrorAndWait(err, nil)
+		log.Panic().Err(err).Msg("Database open failed!")
+	}
+
+	r.Mount("/v2", controller.SyncRouter(pg))
 	r.Get("/metrics", middleware.Metrics())
 
 	return ctx, r
@@ -67,8 +75,9 @@ func StartServer() {
 	subLog.Msg("Starting server")
 
 	serverCtx, r := setupRouter(serverCtx, logger)
+
 	port := ":8295"
-	fmt.Printf("Starting server: http://localhost%s", port)
+	fmt.Printf("Starting server: http://localhost%s\n", port)
 	srv := http.Server{Addr: port, Handler: chi.ServerBaseContext(serverCtx, r)}
 	err := srv.ListenAndServe()
 	if err != nil {
