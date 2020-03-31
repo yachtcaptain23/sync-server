@@ -120,11 +120,15 @@ func Command(datastore *datastore.Postgres) http.HandlerFunc {
 				version := time.Now().Unix()
 				parentIdString := "0"
 				idString := uuid.NewV4().String()
+
+				nigoriSpecific := &sync_pb.NigoriSpecifics{}
+				specific := &sync_pb.EntitySpecifics_Nigori{Nigori: nigoriSpecific}
+				specifics := &sync_pb.EntitySpecifics{SpecificsVariant: specific}
 				guRsp.Entries[0] = &sync_pb.SyncEntity{
 					Ctime: &ctime, Mtime: &mtime, Deleted: &deleted, Folder: &folder,
 					Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
 					Version: &version, ParentIdString: &parentIdString,
-					IdString: &idString}
+					IdString: &idString, Specifics: specifics}
 			}
 
 			// TODO: Implement batch reply and update the value accordingly
