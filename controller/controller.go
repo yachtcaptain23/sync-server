@@ -129,6 +129,12 @@ func Command(datastore *datastore.Postgres) http.HandlerFunc {
 					Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
 					Version: &version, ParentIdString: &parentIdString,
 					IdString: &idString, Specifics: specifics}
+
+				// Bypassing chromium's restriction here, our server won't provide the
+				// initial encryption keys like chromium does, this will be overwritten
+				// by our client.
+				guRsp.EncryptionKeys = make([][]byte, 1)
+				guRsp.EncryptionKeys[0] = []byte("1234")
 			}
 
 			// TODO: Implement batch reply and update the value accordingly
