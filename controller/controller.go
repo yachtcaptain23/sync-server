@@ -39,7 +39,7 @@ func Dump(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(string(requestDump))
 }
 
-func Command(datastore *datastore.Postgres) http.HandlerFunc {
+func Command(db *datastore.Postgres) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Dump(w, r)
 
@@ -97,7 +97,6 @@ func Command(datastore *datastore.Postgres) http.HandlerFunc {
 			// Process from_progress_marker
 			// TODO: query DB to get update entries
 			if guMsg.FromProgressMarker != nil {
-				fmt.Println("Len of from_progress_marker: ", len(guMsg.FromProgressMarker))
 				guRsp.NewProgressMarker = make([]*sync_pb.DataTypeProgressMarker, len(guMsg.FromProgressMarker))
 
 				for i := 0; i < len(guMsg.FromProgressMarker); i++ {
@@ -141,7 +140,54 @@ func Command(datastore *datastore.Postgres) http.HandlerFunc {
 			changesRemaining := int64(0)
 			guRsp.ChangesRemaining = &changesRemaining
 		} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
+			fmt.Println("COMMIT RECEIVED")
+			commitMsg := *pb.Commit
+			commitRsp := &sync_pb.CommitResponse{}
+			pbRsp.Commit = commitRsp
+			commitRsp.Entryresponse = make([]*sync_pb.CommitResponse_EntryResponse, len(commitMsg.Entries))
+			if commitMsg.Entries != nil {
+				for i, v := range commitMsg.Entries {
+					// TODO: Verified fields here before processing the values, early
+					// return bad message when any required fields are invalid.
+					entryRsp := &sync_pb.CommitResponse_EntryResponse{}
+					commitRsp.Entryresponse[i] = entryRsp
+					entityToCommit, err := datastore.CreateSyncEntity(v, *commitMsg.CacheGuid)
+					if err != nil {
+						rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+						entryRsp.ResponseType = &rspType
+						continue
+					}
 
+					if *v.Version == 0 { // Create
+						// TODO:
+						// Add version by 1 and insert into table
+						entityToCommit.Version++
+					} else { // Update/Delete
+						// TODO:
+						// 1. Get entity from DB using ID
+						// 2. Check version
+						// 2.a rollback and return CONFLICT if version mismatch
+						// 2.b otherwise, add version by 1 and update the row accordingly
+						entityToCommit.Version++
+					}
+
+					// Prepare success response
+					rspType := sync_pb.CommitResponse_SUCCESS
+					entryRsp.ResponseType = &rspType
+					entryRsp.IdString = utils.String(entityToCommit.ID)
+					if entityToCommit.ParentID.Valid {
+						entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
+					}
+					entryRsp.Version = &entityToCommit.Version
+					if entityToCommit.Name.Valid {
+						entryRsp.Name = utils.String(entityToCommit.Name.String)
+					}
+					if entityToCommit.NonUniqueName.Valid {
+						entryRsp.NonUniqueName = utils.String(entityToCommit.NonUniqueName.String)
+					}
+					entryRsp.Mtime = &entityToCommit.Mtime
+				}
+			}
 		}
 
 		out, err := proto.Marshal(pbRsp)
@@ -150,7 +196,6 @@ func Command(datastore *datastore.Postgres) http.HandlerFunc {
 			http.Error(w, "Marshal Error", http.StatusInternalServerError)
 			return
 		}
-
 		/*
 			pbRspOut := &sync_pb.ClientToServerResponse{}
 			err = proto.Unmarshal(out, pbRspOut)
