@@ -11,7 +11,7 @@ import (
 )
 
 type SyncEntity struct {
-	ID                     string         `json:"id_string" db: "id"`
+	ID                     string         `json:"id_string" db:"id"`
 	ParentID               sql.NullString `json:"parent_id_string" db:"parent_id"`
 	OldParentID            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
 	Version                int64          `json:"version" db:"version"`
@@ -29,8 +29,49 @@ type SyncEntity struct {
 	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
 }
 
-func InsertSyncEntity(entity *SyncEntity) error {
+func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :folder, :client_defined_unique_tag, :unique_position)`
+	_, err := pg.NamedExec(stmt, *entity)
+	if err != nil {
+		fmt.Println("Insert error: ", err.Error())
+	}
+	return err
+}
+
+func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
+	if entity.Deleted.Valid && entity.Deleted.Bool {
+		return pg.DeleteSyncEntity(entity.ID)
+	}
+
+	stmt := `UPDATE sync_entites SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
+	_, err := pg.NamedExec(stmt, *entity)
+	if err != nil {
+		fmt.Println("Update error: ", err.Error())
+	}
+	return err
+}
+
+func (pg *Postgres) DeleteSyncEntity(id string) error {
+	_, err := pg.Exec(`UPDATE sync_entities SET deleted = true WHERE id = $1`, id)
+	if err != nil {
+		fmt.Println("Delete error: ", err.Error())
+	}
+	return err
+}
+
+func (pg *Postgres) GetSyncEntity(entity *SyncEntity) error {
 	return nil
+}
+
+func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
+	var serverVersion int64
+	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1", id)
+	if err != nil {
+		fmt.Println("Get version error: ", err.Error(), "id: ", id)
+		return false, nil
+	}
+
+	return clientVersion == serverVersion, nil
 }
 
 func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity, error) {

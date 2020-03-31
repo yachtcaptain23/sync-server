@@ -39,9 +39,9 @@ func Dump(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(string(requestDump))
 }
 
-func Command(db *datastore.Postgres) http.HandlerFunc {
+func Command(pg *datastore.Postgres) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		Dump(w, r)
+		// Dump(w, r)
 
 		// Decompress
 		var err error
@@ -71,7 +71,7 @@ func Command(db *datastore.Postgres) http.HandlerFunc {
 			http.Error(w, "Unmarshal error", http.StatusInternalServerError)
 			return
 		}
-		fmt.Println("Received ClientToServerMessage:", pb)
+		// fmt.Println("Received ClientToServerMessage:", pb)
 
 		// Create ClientToServerResponse and fill general fields for both GU and
 		// Commit.
@@ -102,7 +102,7 @@ func Command(db *datastore.Postgres) http.HandlerFunc {
 				for i := 0; i < len(guMsg.FromProgressMarker); i++ {
 					guRsp.NewProgressMarker[i] = &sync_pb.DataTypeProgressMarker{}
 					guRsp.NewProgressMarker[i].DataTypeId = guMsg.FromProgressMarker[i].DataTypeId
-					// TODO: latest timestamp of recoords?
+					// TODO: latest timestamp of records?
 					guRsp.NewProgressMarker[i].Token, _ = time.Now().MarshalJSON()
 				}
 			}
@@ -159,16 +159,32 @@ func Command(db *datastore.Postgres) http.HandlerFunc {
 					}
 
 					if *v.Version == 0 { // Create
-						// TODO:
-						// Add version by 1 and insert into table
 						entityToCommit.Version++
-					} else { // Update/Delete
-						// TODO:
-						// 1. Get entity from DB using ID
-						// 2. Check version
-						// 2.a rollback and return CONFLICT if version mismatch
-						// 2.b otherwise, add version by 1 and update the row accordingly
+						err = pg.InsertSyncEntity(entityToCommit)
+						if err != nil {
+							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+							entryRsp.ResponseType = &rspType
+							continue
+						}
+					} else { // Update
+						match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
+						if err != nil {
+							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+							entryRsp.ResponseType = &rspType
+							continue
+						}
+						if !match {
+							rspType := sync_pb.CommitResponse_CONFLICT
+							entryRsp.ResponseType = &rspType
+							continue
+						}
 						entityToCommit.Version++
+						err = pg.UpdateSyncEntity(entityToCommit)
+						if err != nil {
+							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+							entryRsp.ResponseType = &rspType
+							continue
+						}
 					}
 
 					// Prepare success response
