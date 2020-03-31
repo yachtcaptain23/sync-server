@@ -59,7 +59,7 @@ func setupRouter(ctx context.Context, logger *zerolog.Logger) (context.Context, 
 	if err != nil {
 		fmt.Println("WTF, error = ", err.Error())
 		raven.CaptureErrorAndWait(err, nil)
-		log.Panic().Err(err).Msg("Database open failed!")
+		log.Warn().Err(err).Msg("Database open failed!")
 	}
 
 	r.Mount("/v2", controller.SyncRouter(pg))
