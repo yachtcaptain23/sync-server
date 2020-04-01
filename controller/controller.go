@@ -6,22 +6,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
-	"time"
 
+	"github.com/brave-experiments/sync-server/command"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
-	"github.com/brave-experiments/sync-server/utils"
+	//	"github.com/brave-experiments/sync-server/utils"
 	"github.com/go-chi/chi"
 	"github.com/golang/protobuf/proto"
-	"github.com/satori/go.uuid"
-)
-
-const (
-	// Always return hard-coded value of store birthday for now
-	STORE_BIRTHDAY                string = "1"
-	MAX_COMMIT_BATCH_SIZE         int32  = 90
-	SESSIONS_COMMIT_DELAY_SECONDS int32  = 11
-	SET_SYNC_POLL_INTERVAL        int32  = 30
 )
 
 func SyncRouter(datastore *datastore.Postgres) chi.Router {
@@ -45,7 +36,7 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 
 		// Decompress
 		var err error
-		var message []byte
+		var msg []byte
 		var gr *gzip.Reader
 		if r.Header.Get("Content-Encoding") == "gzip" {
 			gr, err = gzip.NewReader(r.Body)
@@ -53,9 +44,9 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 				http.Error(w, "Decompress error", http.StatusInternalServerError)
 				return
 			}
-			message, err = ioutil.ReadAll(gr)
+			msg, err = ioutil.ReadAll(gr)
 		} else {
-			message, err = ioutil.ReadAll(r.Body)
+			msg, err = ioutil.ReadAll(r.Body)
 		}
 		if err != nil {
 			fmt.Println("Error while reading data from client: ", err.Error())
@@ -65,7 +56,7 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 
 		// Unmarshal into ClientToServerMessage
 		pb := &sync_pb.ClientToServerMessage{}
-		err = proto.Unmarshal(message, pb)
+		err = proto.Unmarshal(msg, pb)
 		if err != nil {
 			fmt.Println("Error while unmarshalling protocol buf: ", err.Error())
 			http.Error(w, "Unmarshal error", http.StatusInternalServerError)
@@ -73,149 +64,11 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 		}
 		// fmt.Println("Received ClientToServerMessage:", pb)
 
-		// Create ClientToServerResponse and fill general fields for both GU and
-		// Commit.
 		pbRsp := &sync_pb.ClientToServerResponse{}
-
-		pbRsp.StoreBirthday = utils.String(STORE_BIRTHDAY)
-		errCode := sync_pb.SyncEnums_SUCCESS
-		pbRsp.ErrorCode = &errCode
-		pbRsp.ClientCommand = &sync_pb.ClientCommand{
-			SetSyncPollInterval:        utils.Int32(SET_SYNC_POLL_INTERVAL),
-			MaxCommitBatchSize:         utils.Int32(MAX_COMMIT_BATCH_SIZE),
-			SessionsCommitDelaySeconds: utils.Int32(SESSIONS_COMMIT_DELAY_SECONDS)}
-
-		// Create GU response and fill it into the response
-		if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {
-			fmt.Println("GET UPDATE RECEIVED")
-			guMsg := *pb.GetUpdates
-			guRsp := &sync_pb.GetUpdatesResponse{}
-			pbRsp.GetUpdates = guRsp
-
-			// TODO: process FetchFolders
-
-			// Process from_progress_marker
-			// TODO: query DB to get update entries
-			if guMsg.FromProgressMarker != nil {
-				guRsp.NewProgressMarker = make([]*sync_pb.DataTypeProgressMarker, len(guMsg.FromProgressMarker))
-
-				for i := 0; i < len(guMsg.FromProgressMarker); i++ {
-					guRsp.NewProgressMarker[i] = &sync_pb.DataTypeProgressMarker{}
-					guRsp.NewProgressMarker[i].DataTypeId = guMsg.FromProgressMarker[i].DataTypeId
-					// TODO: latest timestamp of records?
-					guRsp.NewProgressMarker[i].Token, _ = time.Now().MarshalJSON()
-				}
-			}
-
-			if *pb.GetUpdates.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
-				fmt.Println("New client")
-
-				// Create nigori top folder
-				guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
-				now := time.Now().Unix()
-				deleted := false
-				folder := true
-				name := "Nigori"
-				serverDefinedTag := "google_chrome_nigori"
-				version := int64(1)
-				parentIdString := "0"
-				idString := uuid.NewV4().String()
-
-				nigoriSpecific := &sync_pb.NigoriSpecifics{}
-				specific := &sync_pb.EntitySpecifics_Nigori{Nigori: nigoriSpecific}
-				specifics := &sync_pb.EntitySpecifics{SpecificsVariant: specific}
-				syncEntry := &sync_pb.SyncEntity{
-					Ctime: &now, Mtime: &now, Deleted: &deleted, Folder: &folder,
-					Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
-					Version: &version, ParentIdString: &parentIdString,
-					IdString: &idString, Specifics: specifics}
-				entityToCommit, err := datastore.CreateSyncEntity(syncEntry, "")
-				if err != nil {
-					errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-				} else {
-					err = pg.InsertSyncEntity(entityToCommit)
-					if err != nil {
-						errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-					} else {
-						guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
-						guRsp.Entries[0] = syncEntry
-					}
-				}
-				// Bypassing chromium's restriction here, our server won't provide the
-				// initial encryption keys like chromium does, this will be overwritten
-				// by our client.
-				guRsp.EncryptionKeys = make([][]byte, 1)
-				guRsp.EncryptionKeys[0] = []byte("1234")
-			}
-
-			// TODO: Implement batch reply and update the value accordingly
-			changesRemaining := int64(0)
-			guRsp.ChangesRemaining = &changesRemaining
-		} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
-			fmt.Println("COMMIT RECEIVED")
-			commitMsg := *pb.Commit
-			commitRsp := &sync_pb.CommitResponse{}
-			pbRsp.Commit = commitRsp
-			commitRsp.Entryresponse = make([]*sync_pb.CommitResponse_EntryResponse, len(commitMsg.Entries))
-			if commitMsg.Entries != nil {
-				for i, v := range commitMsg.Entries {
-					// TODO: Verified fields here before processing the values, early
-					// return bad message when any required fields are invalid.
-					entryRsp := &sync_pb.CommitResponse_EntryResponse{}
-					commitRsp.Entryresponse[i] = entryRsp
-					entityToCommit, err := datastore.CreateSyncEntity(v, *commitMsg.CacheGuid)
-					if err != nil {
-						rspType := sync_pb.CommitResponse_INVALID_MESSAGE
-						entryRsp.ResponseType = &rspType
-						continue
-					}
-
-					if *v.Version == 0 { // Create
-						entityToCommit.Version++
-						err = pg.InsertSyncEntity(entityToCommit)
-						if err != nil {
-							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
-							entryRsp.ResponseType = &rspType
-							continue
-						}
-					} else { // Update
-						match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
-						if err != nil {
-							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
-							entryRsp.ResponseType = &rspType
-							continue
-						}
-						if !match {
-							rspType := sync_pb.CommitResponse_CONFLICT
-							entryRsp.ResponseType = &rspType
-							continue
-						}
-						entityToCommit.Version++
-						err = pg.UpdateSyncEntity(entityToCommit)
-						if err != nil {
-							rspType := sync_pb.CommitResponse_INVALID_MESSAGE
-							entryRsp.ResponseType = &rspType
-							continue
-						}
-					}
-
-					// Prepare success response
-					rspType := sync_pb.CommitResponse_SUCCESS
-					entryRsp.ResponseType = &rspType
-					entryRsp.IdString = utils.String(entityToCommit.ID)
-					if entityToCommit.ParentID.Valid {
-						entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
-					}
-					entryRsp.Version = &entityToCommit.Version
-					if entityToCommit.Name.Valid {
-						entryRsp.Name = utils.String(entityToCommit.Name.String)
-					}
-					if entityToCommit.NonUniqueName.Valid {
-						entryRsp.NonUniqueName = utils.String(entityToCommit.NonUniqueName.String)
-					}
-					entryRsp.Mtime = &entityToCommit.Mtime
-				}
-			}
+		err = command.HandleClientToServerMessage(pb, pbRsp, pg)
+		if err != nil {
+			fmt.Println(err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
 		out, err := proto.Marshal(pbRsp)
@@ -224,16 +77,7 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 			http.Error(w, "Marshal Error", http.StatusInternalServerError)
 			return
 		}
-		/*
-			pbRspOut := &sync_pb.ClientToServerResponse{}
-			err = proto.Unmarshal(out, pbRspOut)
-			if err != nil {
-				fmt.Println("Error while unmarshalling protocal buf: ", err.Error())
-				http.Error(w, "Unmarshal Error", http.StatusInternalServerError)
-				return
-			}
-			fmt.Println("pbRspOut: ", pbRspOut)
-		*/
+
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(out)
 		if err != nil {
