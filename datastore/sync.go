@@ -43,7 +43,7 @@ func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
 		return pg.DeleteSyncEntity(entity.ID)
 	}
 
-	stmt := `UPDATE sync_entites SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
+	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Update error: ", err.Error())
