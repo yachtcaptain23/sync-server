@@ -21,8 +21,8 @@ type SyncEntity struct {
 	NonUniqueName          sql.NullString `json:"non_unique_name" db:"non_unique_name"`
 	ServerDefinedUniqueTag sql.NullString `json:"server_defined_unique_tag" db:"server_defined_unique_tag"`
 	Deleted                sql.NullBool   `json:"deleted" db:"deleted"`
-	OriginatorCacheGUID    string         `json:"originator_cache_guid" db:"originator_cache_guid"`
-	OriginatorClientItemID string         `json:"originator_client_item_id" db:"originator_client_item_id"`
+	OriginatorCacheGUID    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
+	OriginatorClientItemID sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
 	Specifics              []byte         `json:"specifics" db:"specifics"`
 	Folder                 sql.NullBool   `json:"folder" db:"folder"`
 	ClientDefinedUniqueTag sql.NullString `json:"client_defined_unique_tag" db:"client_defined_unique_tag"`
@@ -126,8 +126,19 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 		folder = sql.NullBool{*entity.Folder, true}
 	}
 
+	id := *entity.IdString
+	originatorCacheGuid := sql.NullString{"", false}
+	originatorClientItemID := sql.NullString{"", false}
+	if len(cacheGuid) > 0 {
+		if *entity.Version == 0 {
+			id = uuid.NewV4().String()
+		}
+		originatorCacheGuid = sql.NullString{cacheGuid, true}
+		originatorClientItemID = sql.NullString{*entity.IdString, true}
+	}
+
 	return &SyncEntity{
-		ID:                     uuid.NewV4().String(),
+		ID:                     id,
 		ParentID:               parentId,
 		OldParentID:            oldParentId,
 		Version:                *entity.Version,
@@ -137,8 +148,8 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 		NonUniqueName:          nonUniqueName,
 		ServerDefinedUniqueTag: serverDefinedUniqueTag,
 		Deleted:                deleted,
-		OriginatorCacheGUID:    cacheGuid,
-		OriginatorClientItemID: *entity.IdString,
+		OriginatorCacheGUID:    originatorCacheGuid,
+		OriginatorClientItemID: originatorClientItemID,
 		ClientDefinedUniqueTag: clientDefinedUniqueTag,
 		Specifics:              specifics,
 		Folder:                 folder,

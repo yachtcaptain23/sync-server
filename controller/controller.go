@@ -109,26 +109,38 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 
 			if *pb.GetUpdates.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
 				fmt.Println("New client")
+
+				// Create nigori top folder
 				guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
-				ctime := int64(0)
-				mtime := time.Now().Unix()
+				now := time.Now().Unix()
 				deleted := false
 				folder := true
 				name := "Nigori"
 				serverDefinedTag := "google_chrome_nigori"
-				version := time.Now().Unix()
+				version := int64(1)
 				parentIdString := "0"
 				idString := uuid.NewV4().String()
 
 				nigoriSpecific := &sync_pb.NigoriSpecifics{}
 				specific := &sync_pb.EntitySpecifics_Nigori{Nigori: nigoriSpecific}
 				specifics := &sync_pb.EntitySpecifics{SpecificsVariant: specific}
-				guRsp.Entries[0] = &sync_pb.SyncEntity{
-					Ctime: &ctime, Mtime: &mtime, Deleted: &deleted, Folder: &folder,
+				syncEntry := &sync_pb.SyncEntity{
+					Ctime: &now, Mtime: &now, Deleted: &deleted, Folder: &folder,
 					Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
 					Version: &version, ParentIdString: &parentIdString,
 					IdString: &idString, Specifics: specifics}
-
+				entityToCommit, err := datastore.CreateSyncEntity(syncEntry, "")
+				if err != nil {
+					errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+				} else {
+					err = pg.InsertSyncEntity(entityToCommit)
+					if err != nil {
+						errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+					} else {
+						guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
+						guRsp.Entries[0] = syncEntry
+					}
+				}
 				// Bypassing chromium's restriction here, our server won't provide the
 				// initial encryption keys like chromium does, this will be overwritten
 				// by our client.
