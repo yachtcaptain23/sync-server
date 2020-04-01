@@ -13,7 +13,7 @@ type Postgres struct {
 }
 
 func NewPostgres() (*Postgres, error) {
-	db, err := sqlx.Open("postgres", "user=yrliou dbname=sync_server sslmode=disable")
+	db, err := sqlx.Open("postgres", "user=sync_server dbname=sync_server sslmode=disable")
 	if err != nil {
 		return nil, err
 	}
