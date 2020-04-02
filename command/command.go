@@ -18,7 +18,7 @@ const (
 	SET_SYNC_POLL_INTERVAL        int32  = 30
 )
 
-func HandleGetUpdateRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
+func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 	// TODO: process FetchFolders
@@ -163,7 +163,7 @@ func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_
 	if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {
 		guRsp := &sync_pb.GetUpdatesResponse{}
 		pbRsp.GetUpdates = guRsp
-		pbRsp.ErrorCode, err = HandleGetUpdateRequest(pb.GetUpdates, guRsp, pg)
+		pbRsp.ErrorCode, err = HandleGetUpdatesRequest(pb.GetUpdates, guRsp, pg)
 	} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
 		commitRsp := &sync_pb.CommitResponse{}
 		pbRsp.Commit = commitRsp
