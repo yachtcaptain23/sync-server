@@ -3,6 +3,9 @@ package datastore
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/brave-experiments/sync-server/sync_pb"
@@ -24,13 +27,14 @@ type SyncEntity struct {
 	OriginatorCacheGUID    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
 	OriginatorClientItemID sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
 	Specifics              []byte         `json:"specifics" db:"specifics"`
+	DataTypeID             int            `json:"data_type_id" db:"data_type_id"`
 	Folder                 sql.NullBool   `json:"folder" db:"folder"`
 	ClientDefinedUniqueTag sql.NullString `json:"client_defined_unique_tag" db:"client_defined_unique_tag"`
 	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
 }
 
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
-	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :folder, :client_defined_unique_tag, :unique_position)`
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position)`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Insert error: ", err.Error())
@@ -100,14 +104,23 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 	if entity.ClientDefinedUniqueTag != nil {
 		clientDefinedUniqueTag = sql.NullString{*entity.ClientDefinedUniqueTag, true}
 	}
+
 	var specifics []byte
-	if entity.Specifics != nil {
-		specifics, err = proto.Marshal(entity.Specifics)
-		if err != nil {
-			fmt.Println("Marshal Error", err.Error())
-			return nil, err
-		}
+	// if entity.Specifics != nil {  // TODO: make sure this is present in the
+	// validator
+	specifics, err = proto.Marshal(entity.Specifics)
+	if err != nil {
+		fmt.Println("Marshal Error", err.Error())
+		return nil, err
 	}
+	// }
+
+	// TODO: wrap getting type ID into an util function
+	structField := reflect.ValueOf(entity.Specifics.SpecificsVariant).Elem().Type().Field(0)
+	tag := structField.Tag.Get("protobuf")
+	s := strings.Split(tag, ",")
+	dataTypeId, _ := strconv.Atoi(s[1])
+
 	var uniquePosition []byte
 	if entity.UniquePosition != nil {
 		uniquePosition, err = proto.Marshal(entity.UniquePosition)
@@ -154,5 +167,6 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 		Specifics:              specifics,
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
+		DataTypeID:             dataTypeId,
 	}, nil
 }
