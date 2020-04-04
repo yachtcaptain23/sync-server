@@ -14,21 +14,21 @@ import (
 )
 
 type SyncEntity struct {
-	ID                     string         `json:"id_string" db:"id"`
-	ParentID               sql.NullString `json:"parent_id_string" db:"parent_id"`
-	OldParentID            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
+	Id                     string         `json:"id_string" db:"id"`
+	ParentId               sql.NullString `json:"parent_id_string" db:"parent_id"`
+	OldParentId            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
 	Version                int64          `json:"version" db:"version"`
 	Mtime                  int64          `json:"mtime" db:"mtime"`
 	Ctime                  int64          `json:"ctime" db:"ctime"`
 	Name                   sql.NullString `json:"name" db:"name"`
 	NonUniqueName          sql.NullString `json:"non_unique_name" db:"non_unique_name"`
 	ServerDefinedUniqueTag sql.NullString `json:"server_defined_unique_tag" db:"server_defined_unique_tag"`
-	Deleted                sql.NullBool   `json:"deleted" db:"deleted"`
-	OriginatorCacheGUID    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
-	OriginatorClientItemID sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
+	Deleted                bool           `json:"deleted" db:"deleted"`
+	OriginatorCacheGuid    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
+	OriginatorClientItemId sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
 	Specifics              []byte         `json:"specifics" db:"specifics"`
 	DataTypeID             int            `json:"data_type_id" db:"data_type_id"`
-	Folder                 sql.NullBool   `json:"folder" db:"folder"`
+	Folder                 bool           `json:"folder" db:"folder"`
 	ClientDefinedUniqueTag sql.NullString `json:"client_defined_unique_tag" db:"client_defined_unique_tag"`
 	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
 }
@@ -43,8 +43,8 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 }
 
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	if entity.Deleted.Valid && entity.Deleted.Bool {
-		return pg.DeleteSyncEntity(entity.ID)
+	if entity.Deleted {
+		return pg.DeleteSyncEntity(entity.Id)
 	}
 
 	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
@@ -78,7 +78,17 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 	return clientVersion == serverVersion, nil
 }
 
-func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity, error) {
+func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool) (entities []SyncEntity, err error) {
+	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2"
+	if !fetchFolders {
+		stmt += "AND folder = false"
+	}
+	stmt += " ORDER BY mtime"
+	err = pg.Select(&entities, stmt, dataType, clientToken)
+	return
+}
+
+func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity, error) {
 	var err error
 	parentId := sql.NullString{"", false}
 	if entity.ParentIdString != nil {
@@ -130,30 +140,30 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 		}
 	}
 
-	deleted := sql.NullBool{false, false}
+	deleted := false
 	if entity.Deleted != nil {
-		deleted = sql.NullBool{*entity.Deleted, true}
+		deleted = *entity.Deleted
 	}
-	folder := sql.NullBool{false, false}
+	folder := false
 	if entity.Folder != nil {
-		folder = sql.NullBool{*entity.Folder, true}
+		folder = *entity.Folder
 	}
 
 	id := *entity.IdString
 	originatorCacheGuid := sql.NullString{"", false}
-	originatorClientItemID := sql.NullString{"", false}
+	originatorClientItemId := sql.NullString{"", false}
 	if len(cacheGuid) > 0 {
 		if *entity.Version == 0 {
 			id = uuid.NewV4().String()
 		}
 		originatorCacheGuid = sql.NullString{cacheGuid, true}
-		originatorClientItemID = sql.NullString{*entity.IdString, true}
+		originatorClientItemId = sql.NullString{*entity.IdString, true}
 	}
 
 	return &SyncEntity{
-		ID:                     id,
-		ParentID:               parentId,
-		OldParentID:            oldParentId,
+		Id:                     id,
+		ParentId:               parentId,
+		OldParentId:            oldParentId,
 		Version:                *entity.Version,
 		Ctime:                  *entity.Mtime,
 		Mtime:                  time.Now().Unix(),
@@ -161,12 +171,65 @@ func CreateSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity
 		NonUniqueName:          nonUniqueName,
 		ServerDefinedUniqueTag: serverDefinedUniqueTag,
 		Deleted:                deleted,
-		OriginatorCacheGUID:    originatorCacheGuid,
-		OriginatorClientItemID: originatorClientItemID,
+		OriginatorCacheGuid:    originatorCacheGuid,
+		OriginatorClientItemId: originatorClientItemId,
 		ClientDefinedUniqueTag: clientDefinedUniqueTag,
 		Specifics:              specifics,
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
 		DataTypeID:             dataTypeId,
 	}, nil
+}
+
+func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
+	pbEntity := &sync_pb.SyncEntity{
+		IdString: &entity.Id, Version: &entity.Version, Mtime: &entity.Mtime,
+		Ctime: &entity.Ctime, Deleted: &entity.Deleted, Folder: &entity.Folder}
+	specifics := &sync_pb.EntitySpecifics{}
+	err := proto.Unmarshal(entity.Specifics, specifics)
+	if err != nil {
+		fmt.Println("[CreatePBSyncEntity] Error when unmarshalling specifics:", err.Error())
+		return nil, err
+	}
+	pbEntity.Specifics = specifics
+
+	if entity.UniquePosition != nil {
+		uniquePosition := &sync_pb.UniquePosition{}
+		err := proto.Unmarshal(entity.UniquePosition, uniquePosition)
+		if err != nil {
+			fmt.Println("[CreatePBSyncEntity] Error when unmarshalling specifics:", err.Error())
+			return nil, err
+		}
+		pbEntity.UniquePosition = uniquePosition
+	}
+
+	if entity.ParentId.Valid {
+		pbEntity.ParentIdString = &entity.ParentId.String
+	}
+
+	if entity.Name.Valid {
+		pbEntity.Name = &entity.Name.String
+	}
+
+	if entity.NonUniqueName.Valid {
+		pbEntity.NonUniqueName = &entity.NonUniqueName.String
+	}
+
+	if entity.ServerDefinedUniqueTag.Valid {
+		pbEntity.ServerDefinedUniqueTag = &entity.ServerDefinedUniqueTag.String
+	}
+
+	if entity.ClientDefinedUniqueTag.Valid {
+		pbEntity.ClientDefinedUniqueTag = &entity.ClientDefinedUniqueTag.String
+	}
+
+	if entity.OriginatorCacheGuid.Valid {
+		pbEntity.OriginatorCacheGuid = &entity.OriginatorCacheGuid.String
+	}
+
+	if entity.OriginatorClientItemId.Valid {
+		pbEntity.OriginatorClientItemId = &entity.OriginatorClientItemId.String
+	}
+
+	return pbEntity, nil
 }

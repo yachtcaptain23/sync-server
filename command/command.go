@@ -1,85 +1,121 @@
 package command
 
 import (
+	"encoding/binary"
 	"fmt"
-	"time"
 
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
 	"github.com/brave-experiments/sync-server/utils"
-	"github.com/satori/go.uuid"
 )
 
 const (
 	// Always return hard-coded value of store birthday for now
 	STORE_BIRTHDAY                string = "1"
 	MAX_COMMIT_BATCH_SIZE         int32  = 90
+	MAX_GU_BATCH_SIZE             int32  = 500
 	SESSIONS_COMMIT_DELAY_SECONDS int32  = 11
 	SET_SYNC_POLL_INTERVAL        int32  = 30
+	NIGORI_TYPE_ID                int32  = 47745
 )
 
 func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
-	// TODO: process FetchFolders
 
-	// Process from_progress_marker
-	// TODO: query DB to get update entries
-	if guMsg.FromProgressMarker != nil {
-		guRsp.NewProgressMarker = make([]*sync_pb.DataTypeProgressMarker, len(guMsg.FromProgressMarker))
+	changesRemaining := int64(0)
+	guRsp.ChangesRemaining = &changesRemaining
 
-		for i := 0; i < len(guMsg.FromProgressMarker); i++ {
-			guRsp.NewProgressMarker[i] = &sync_pb.DataTypeProgressMarker{}
-			guRsp.NewProgressMarker[i].DataTypeId = guMsg.FromProgressMarker[i].DataTypeId
-			// TODO: latest timestamp of records instead?
-			guRsp.NewProgressMarker[i].Token, _ = time.Now().MarshalJSON()
-		}
+	if guMsg.FromProgressMarker == nil { // nothing to process
+		return &errCode, nil
 	}
 
-	if *guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
-		fmt.Println("New client")
+	fetchFolders := true
+	if guMsg.FetchFolders != nil {
+		fetchFolders = *guMsg.FetchFolders
+	}
 
-		// Create nigori top folder
-		guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
-		now := time.Now().Unix()
-		deleted := false
-		folder := true
-		name := "Nigori"
-		serverDefinedTag := "google_chrome_nigori"
-		version := int64(1)
-		parentIdString := "0"
-		idString := uuid.NewV4().String()
+	maxSize := MAX_GU_BATCH_SIZE
+	if guMsg.BatchSize != nil && *guMsg.BatchSize < MAX_GU_BATCH_SIZE {
+		maxSize = *guMsg.BatchSize
+	}
 
-		nigoriSpecific := &sync_pb.NigoriSpecifics{}
-		specific := &sync_pb.EntitySpecifics_Nigori{Nigori: nigoriSpecific}
-		specifics := &sync_pb.EntitySpecifics{SpecificsVariant: specific}
-		syncEntry := &sync_pb.SyncEntity{
-			Ctime: &now, Mtime: &now, Deleted: &deleted, Folder: &folder,
-			Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
-			Version: &version, ParentIdString: &parentIdString,
-			IdString: &idString, Specifics: specifics}
-		entityToCommit, err := datastore.CreateSyncEntity(syncEntry, "")
-		if err != nil {
-			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+	// Process from_progress_marker
+	guRsp.NewProgressMarker = make([]*sync_pb.DataTypeProgressMarker, len(guMsg.FromProgressMarker))
+	guRsp.Entries = make([]*sync_pb.SyncEntity, 0, maxSize)
+	for i, fromProgressMarker := range guMsg.FromProgressMarker {
+		guRsp.NewProgressMarker[i] = &sync_pb.DataTypeProgressMarker{}
+		guRsp.NewProgressMarker[i].DataTypeId = fromProgressMarker.DataTypeId
+
+		// Default token value is client's token, otherwise 0.
+		// This token will be updated when we return the updated entities.
+		if len(fromProgressMarker.Token) > 0 {
+			guRsp.NewProgressMarker[i].Token = fromProgressMarker.Token
 		} else {
+			guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
+			binary.PutVarint(guRsp.NewProgressMarker[i].Token, int64(0))
+		}
+
+		if *fromProgressMarker.DataTypeId == NIGORI_TYPE_ID &&
+			*guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
+			fmt.Println("NEW CLIENT")
+
+			// Bypassing chromium's restriction here, our server won't provide the
+			// initial encryption keys like chromium does, this will be overwritten
+			// by our client.
+			guRsp.EncryptionKeys = make([][]byte, 1)
+			guRsp.EncryptionKeys[0] = []byte("1234")
+
+			// Create a nigori top folder entry and save into DB
+			syncEntity := GetNewClientEntity()
+			entityToCommit, err := datastore.CreateDBSyncEntity(syncEntity, "")
+			if err != nil {
+				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+				return &errCode, nil
+			}
 			err = pg.InsertSyncEntity(entityToCommit)
 			if err != nil {
 				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-			} else {
-				guRsp.Entries = make([]*sync_pb.SyncEntity, 1)
-				guRsp.Entries[0] = syncEntry
+				return &errCode, nil
+			}
+
+			guRsp.Entries = append(guRsp.Entries, syncEntity)
+			guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
+			binary.PutVarint(guRsp.NewProgressMarker[i].Token, entityToCommit.Mtime)
+		} else { // Query DB to get update entries for a given data type
+			token, n := binary.Varint(guRsp.NewProgressMarker[i].Token)
+			if n <= 0 {
+				// TODO: return bad message instead
+				return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
+			}
+
+			entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders)
+			if err != nil {
+				fmt.Println("pg.GetUpdatesForType error:", err.Error())
+				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+				return &errCode, nil
+			}
+
+			// Fill the PB entry from above DB entries until maxSize is reached.
+			j := 0
+			for ; j < len(entities) && len(guRsp.Entries) < cap(guRsp.Entries); j++ {
+				entity, err := datastore.CreatePBSyncEntity(&entities[j])
+				if err != nil {
+					errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+					return &errCode, nil
+				}
+				guRsp.Entries = append(guRsp.Entries, entity)
+			}
+			changesRemaining += int64(len(entities) - j)
+
+			// If entities are appended, use the lastest mtime as returned token.
+			if j != 0 {
+				guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
+				binary.PutVarint(guRsp.NewProgressMarker[i].Token, *guRsp.Entries[j-1].Mtime)
 			}
 		}
-		// Bypassing chromium's restriction here, our server won't provide the
-		// initial encryption keys like chromium does, this will be overwritten
-		// by our client.
-		guRsp.EncryptionKeys = make([][]byte, 1)
-		guRsp.EncryptionKeys[0] = []byte("1234")
 	}
 
-	// TODO: Implement batch reply and update the value accordingly
-	changesRemaining := int64(0)
-	guRsp.ChangesRemaining = &changesRemaining
 	return &errCode, nil
 }
 
@@ -94,7 +130,7 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// return bad message when any required fields are invalid.
 			entryRsp := &sync_pb.CommitResponse_EntryResponse{}
 			commitRsp.Entryresponse[i] = entryRsp
-			entityToCommit, err := datastore.CreateSyncEntity(v, *commitMsg.CacheGuid)
+			entityToCommit, err := datastore.CreateDBSyncEntity(v, *commitMsg.CacheGuid)
 			if err != nil {
 				rspType := sync_pb.CommitResponse_INVALID_MESSAGE
 				entryRsp.ResponseType = &rspType
@@ -110,7 +146,7 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 					continue
 				}
 			} else { // Update
-				match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
+				match, err := pg.CheckVersion(entityToCommit.Id, entityToCommit.Version)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_INVALID_MESSAGE
 					entryRsp.ResponseType = &rspType
@@ -133,9 +169,9 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// Prepare success response
 			rspType := sync_pb.CommitResponse_SUCCESS
 			entryRsp.ResponseType = &rspType
-			entryRsp.IdString = utils.String(entityToCommit.ID)
-			if entityToCommit.ParentID.Valid {
-				entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
+			entryRsp.IdString = utils.String(entityToCommit.Id)
+			if entityToCommit.ParentId.Valid {
+				entryRsp.ParentIdString = utils.String(entityToCommit.ParentId.String)
 			}
 			entryRsp.Version = &entityToCommit.Version
 			if entityToCommit.Name.Valid {
