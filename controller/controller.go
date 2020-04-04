@@ -18,7 +18,12 @@ import (
 func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/command/", Command(datastore))
+	r.Get("/auth", Auth)
 	return r
+}
+
+func Auth(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("AUTH")
 }
 
 func Dump(w http.ResponseWriter, r *http.Request) {
