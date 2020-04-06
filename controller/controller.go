@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/brave-experiments/sync-server/auth"
 	"github.com/brave-experiments/sync-server/command"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
@@ -24,6 +25,19 @@ func SyncRouter(datastore *datastore.Postgres) chi.Router {
 // Auth handles authentication requests from sync clients.
 func Auth(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("AUTH")
+	body, err := auth.GetAuthRsp(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, err = w.Write(body)
+	if err != nil {
+		fmt.Println("Error writing response body: ", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // Command handles GetUpdates and Commit requests from sync clients.
