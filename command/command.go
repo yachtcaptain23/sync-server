@@ -10,16 +10,18 @@ import (
 )
 
 const (
-	// Always return hard-coded value of store birthday for now
-	STORE_BIRTHDAY                string = "1"
-	MAX_COMMIT_BATCH_SIZE         int32  = 90
-	MAX_GU_BATCH_SIZE             int32  = 500
-	SESSIONS_COMMIT_DELAY_SECONDS int32  = 11
-	SET_SYNC_POLL_INTERVAL        int32  = 30
-	NIGORI_TYPE_ID                int32  = 47745
+	storeBirthday              string = "1"
+	maxCommitBatchSize         int32  = 90
+	maxGUBatchSize             int32  = 500
+	sessionsCommitDelaySeconds int32  = 11
+	setSyncPollInterval        int32  = 30
+	nigoriTypeID               int32  = 47745
 )
 
-func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
+// handleGetUpdatesRequest handles GetUpdatesMessage and fills
+// GetUpdatesResponse. Target sync entities in the database will be updated or
+// deleted based on the client's requests.
+func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
@@ -35,8 +37,8 @@ func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 		fetchFolders = *guMsg.FetchFolders
 	}
 
-	maxSize := MAX_GU_BATCH_SIZE
-	if guMsg.BatchSize != nil && *guMsg.BatchSize < MAX_GU_BATCH_SIZE {
+	maxSize := maxGUBatchSize
+	if guMsg.BatchSize != nil && *guMsg.BatchSize < maxGUBatchSize {
 		maxSize = *guMsg.BatchSize
 	}
 
@@ -56,7 +58,7 @@ func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			binary.PutVarint(guRsp.NewProgressMarker[i].Token, int64(0))
 		}
 
-		if *fromProgressMarker.DataTypeId == NIGORI_TYPE_ID &&
+		if *fromProgressMarker.DataTypeId == nigoriTypeID &&
 			*guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
 			fmt.Println("NEW CLIENT")
 
@@ -119,7 +121,9 @@ func HandleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 	return &errCode, nil
 }
 
-func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
+// handleCommitRequest handles the commit message and fills the commit response.
+// New sync entity is created and inserted into the database.
+func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("COMMIT RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
@@ -146,7 +150,7 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 					continue
 				}
 			} else { // Update
-				match, err := pg.CheckVersion(entityToCommit.Id, entityToCommit.Version)
+				match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_INVALID_MESSAGE
 					entryRsp.ResponseType = &rspType
@@ -169,9 +173,9 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// Prepare success response
 			rspType := sync_pb.CommitResponse_SUCCESS
 			entryRsp.ResponseType = &rspType
-			entryRsp.IdString = utils.String(entityToCommit.Id)
-			if entityToCommit.ParentId.Valid {
-				entryRsp.ParentIdString = utils.String(entityToCommit.ParentId.String)
+			entryRsp.IdString = utils.String(entityToCommit.ID)
+			if entityToCommit.ParentID.Valid {
+				entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
 			}
 			entryRsp.Version = &entityToCommit.Version
 			if entityToCommit.Name.Valid {
@@ -186,26 +190,28 @@ func HandleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 	return &errCode, nil
 }
 
+// HandleClientToServerMessage handles the protobuf ClientToServerMessage and
+// fills the protobuf ClientToServerResponse.
 func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, pg *datastore.Postgres) error {
 	// Create ClientToServerResponse and fill general fields for both GU and
 	// Commit.
-	pbRsp.StoreBirthday = utils.String(STORE_BIRTHDAY)
+	pbRsp.StoreBirthday = utils.String(storeBirthday)
 	pbRsp.ClientCommand = &sync_pb.ClientCommand{
-		SetSyncPollInterval:        utils.Int32(SET_SYNC_POLL_INTERVAL),
-		MaxCommitBatchSize:         utils.Int32(MAX_COMMIT_BATCH_SIZE),
-		SessionsCommitDelaySeconds: utils.Int32(SESSIONS_COMMIT_DELAY_SECONDS)}
+		SetSyncPollInterval:        utils.Int32(setSyncPollInterval),
+		MaxCommitBatchSize:         utils.Int32(maxCommitBatchSize),
+		SessionsCommitDelaySeconds: utils.Int32(sessionsCommitDelaySeconds)}
 
 	var err error
 	if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {
 		guRsp := &sync_pb.GetUpdatesResponse{}
 		pbRsp.GetUpdates = guRsp
-		pbRsp.ErrorCode, err = HandleGetUpdatesRequest(pb.GetUpdates, guRsp, pg)
+		pbRsp.ErrorCode, err = handleGetUpdatesRequest(pb.GetUpdates, guRsp, pg)
 	} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
 		commitRsp := &sync_pb.CommitResponse{}
 		pbRsp.Commit = commitRsp
-		pbRsp.ErrorCode, err = HandleCommitRequest(pb.Commit, commitRsp, pg)
+		pbRsp.ErrorCode, err = handleCommitRequest(pb.Commit, commitRsp, pg)
 	} else {
-		return fmt.Errorf("Unsupported message type of ClientToServerMessage.")
+		return fmt.Errorf("unsupported message type of ClientToServerMessage")
 	}
 
 	return err

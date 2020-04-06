@@ -4,22 +4,23 @@ import (
 	"time"
 
 	"github.com/brave-experiments/sync-server/sync_pb"
+	"github.com/brave-experiments/sync-server/utils"
 	"github.com/satori/go.uuid"
 )
 
 const (
-	NAME               string = "Nigori"
-	SERVER_DEFINED_TAG string = "google_chrome_nigori"
+	name             string = "Nigori"
+	serverDefinedTag string = "google_chrome_nigori"
 )
 
+// GetNewClientEntity generates the initial nigori folder entity for new
+// clients.
 func GetNewClientEntity() *sync_pb.SyncEntity {
 	now := time.Now().Unix()
 	deleted := false
 	folder := true
-	name := NAME
-	serverDefinedTag := SERVER_DEFINED_TAG
 	version := int64(1)
-	parentIdString := "0"
+	parentIDString := "0"
 	idString := uuid.NewV4().String()
 
 	nigoriSpecific := &sync_pb.NigoriSpecifics{}
@@ -28,8 +29,8 @@ func GetNewClientEntity() *sync_pb.SyncEntity {
 
 	syncEntity := &sync_pb.SyncEntity{
 		Ctime: &now, Mtime: &now, Deleted: &deleted, Folder: &folder,
-		Name: &name, ServerDefinedUniqueTag: &serverDefinedTag,
-		Version: &version, ParentIdString: &parentIdString,
+		Name: utils.String(name), ServerDefinedUniqueTag: utils.String(serverDefinedTag),
+		Version: &version, ParentIdString: &parentIDString,
 		IdString: &idString, Specifics: specifics}
 
 	return syncEntity

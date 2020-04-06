@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/http/httputil"
 
 	"github.com/brave-experiments/sync-server/command"
 	"github.com/brave-experiments/sync-server/datastore"
@@ -15,6 +14,7 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
+// SyncRouter add routers for command and auth endpoint requests.
 func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/command/", Command(datastore))
@@ -22,23 +22,14 @@ func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	return r
 }
 
+// Auth handles authentication requests from sync clients.
 func Auth(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("AUTH")
 }
 
-func Dump(w http.ResponseWriter, r *http.Request) {
-	requestDump, err := httputil.DumpRequest(r, true)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Println(string(requestDump))
-}
-
+// Command handles GetUpdates and Commit requests from sync clients.
 func Command(pg *datastore.Postgres) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Dump(w, r)
-
 		// Decompress
 		var err error
 		var msg []byte

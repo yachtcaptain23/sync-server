@@ -13,10 +13,11 @@ import (
 	"github.com/satori/go.uuid"
 )
 
+// SyncEntity represents the underline DB schema of sync entities.
 type SyncEntity struct {
-	Id                     string         `json:"id_string" db:"id"`
-	ParentId               sql.NullString `json:"parent_id_string" db:"parent_id"`
-	OldParentId            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
+	ID                     string         `json:"id_string" db:"id"`
+	ParentID               sql.NullString `json:"parent_id_string" db:"parent_id"`
+	OldParentID            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
 	Version                int64          `json:"version" db:"version"`
 	Mtime                  int64          `json:"mtime" db:"mtime"`
 	Ctime                  int64          `json:"ctime" db:"ctime"`
@@ -24,8 +25,8 @@ type SyncEntity struct {
 	NonUniqueName          sql.NullString `json:"non_unique_name" db:"non_unique_name"`
 	ServerDefinedUniqueTag sql.NullString `json:"server_defined_unique_tag" db:"server_defined_unique_tag"`
 	Deleted                bool           `json:"deleted" db:"deleted"`
-	OriginatorCacheGuid    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
-	OriginatorClientItemId sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
+	OriginatorCacheGUID    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
+	OriginatorClientItemID sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
 	Specifics              []byte         `json:"specifics" db:"specifics"`
 	DataTypeID             int            `json:"data_type_id" db:"data_type_id"`
 	Folder                 bool           `json:"folder" db:"folder"`
@@ -33,6 +34,7 @@ type SyncEntity struct {
 	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
 }
 
+// InsertSyncEntity inserts a new sync entity into postgres database.
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position)`
 	_, err := pg.NamedExec(stmt, *entity)
@@ -42,9 +44,10 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 	return err
 }
 
+// UpdateSyncEntity updates a sync entity in postgres database.
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
 	if entity.Deleted {
-		return pg.DeleteSyncEntity(entity.Id)
+		return pg.deleteSyncEntity(entity.ID)
 	}
 
 	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
@@ -55,7 +58,7 @@ func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
 	return err
 }
 
-func (pg *Postgres) DeleteSyncEntity(id string) error {
+func (pg *Postgres) deleteSyncEntity(id string) error {
 	_, err := pg.Exec(`UPDATE sync_entities SET deleted = true WHERE id = $1`, id)
 	if err != nil {
 		fmt.Println("Delete error: ", err.Error())
@@ -63,10 +66,8 @@ func (pg *Postgres) DeleteSyncEntity(id string) error {
 	return err
 }
 
-func (pg *Postgres) GetSyncEntity(entity *SyncEntity) error {
-	return nil
-}
-
+// CheckVersion get the sync entry with id saved in the database and checks
+// the saved server version against the client version.
 func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 	var serverVersion int64
 	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1", id)
@@ -78,6 +79,8 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 	return clientVersion == serverVersion, nil
 }
 
+// GetUpdatesForType retrieves sync entities of a data type where it's mtime
+// is later than the client token.
 func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool) (entities []SyncEntity, err error) {
 	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2"
 	if !fetchFolders {
@@ -88,31 +91,32 @@ func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFo
 	return
 }
 
-func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEntity, error) {
+// CreateDBSyncEntity converts a protobuf sync entity into a DB sync entity.
+func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEntity, error) {
 	var err error
-	parentId := sql.NullString{"", false}
+	parentID := sql.NullString{Valid: false}
 	if entity.ParentIdString != nil {
-		parentId = sql.NullString{*entity.ParentIdString, true}
+		parentID = sql.NullString{String: *entity.ParentIdString, Valid: true}
 	}
-	oldParentId := sql.NullString{"", false}
+	oldParentID := sql.NullString{Valid: false}
 	if entity.OldParentId != nil {
-		oldParentId = sql.NullString{*entity.OldParentId, true}
+		oldParentID = sql.NullString{String: *entity.OldParentId, Valid: true}
 	}
-	name := sql.NullString{"", false}
+	name := sql.NullString{Valid: false}
 	if entity.Name != nil {
-		name = sql.NullString{*entity.Name, true}
+		name = sql.NullString{String: *entity.Name, Valid: true}
 	}
-	nonUniqueName := sql.NullString{"", false}
+	nonUniqueName := sql.NullString{Valid: false}
 	if entity.NonUniqueName != nil {
-		nonUniqueName = sql.NullString{*entity.NonUniqueName, true}
+		nonUniqueName = sql.NullString{String: *entity.NonUniqueName, Valid: true}
 	}
-	serverDefinedUniqueTag := sql.NullString{"", false}
+	serverDefinedUniqueTag := sql.NullString{Valid: false}
 	if entity.ServerDefinedUniqueTag != nil {
-		serverDefinedUniqueTag = sql.NullString{*entity.ServerDefinedUniqueTag, true}
+		serverDefinedUniqueTag = sql.NullString{String: *entity.ServerDefinedUniqueTag, Valid: true}
 	}
-	clientDefinedUniqueTag := sql.NullString{"", false}
+	clientDefinedUniqueTag := sql.NullString{Valid: false}
 	if entity.ClientDefinedUniqueTag != nil {
-		clientDefinedUniqueTag = sql.NullString{*entity.ClientDefinedUniqueTag, true}
+		clientDefinedUniqueTag = sql.NullString{String: *entity.ClientDefinedUniqueTag, Valid: true}
 	}
 
 	var specifics []byte
@@ -129,7 +133,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEnti
 	structField := reflect.ValueOf(entity.Specifics.SpecificsVariant).Elem().Type().Field(0)
 	tag := structField.Tag.Get("protobuf")
 	s := strings.Split(tag, ",")
-	dataTypeId, _ := strconv.Atoi(s[1])
+	dataTypeID, _ := strconv.Atoi(s[1])
 
 	var uniquePosition []byte
 	if entity.UniquePosition != nil {
@@ -150,20 +154,20 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEnti
 	}
 
 	id := *entity.IdString
-	originatorCacheGuid := sql.NullString{"", false}
-	originatorClientItemId := sql.NullString{"", false}
-	if len(cacheGuid) > 0 {
+	originatorCacheGUID := sql.NullString{Valid: false}
+	originatorClientItemID := sql.NullString{Valid: false}
+	if len(cacheGUID) > 0 {
 		if *entity.Version == 0 {
 			id = uuid.NewV4().String()
 		}
-		originatorCacheGuid = sql.NullString{cacheGuid, true}
-		originatorClientItemId = sql.NullString{*entity.IdString, true}
+		originatorCacheGUID = sql.NullString{String: cacheGUID, Valid: true}
+		originatorClientItemID = sql.NullString{String: *entity.IdString, Valid: true}
 	}
 
 	return &SyncEntity{
-		Id:                     id,
-		ParentId:               parentId,
-		OldParentId:            oldParentId,
+		ID:                     id,
+		ParentID:               parentID,
+		OldParentID:            oldParentID,
 		Version:                *entity.Version,
 		Ctime:                  *entity.Mtime,
 		Mtime:                  time.Now().Unix(),
@@ -171,19 +175,20 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGuid string) (*SyncEnti
 		NonUniqueName:          nonUniqueName,
 		ServerDefinedUniqueTag: serverDefinedUniqueTag,
 		Deleted:                deleted,
-		OriginatorCacheGuid:    originatorCacheGuid,
-		OriginatorClientItemId: originatorClientItemId,
+		OriginatorCacheGUID:    originatorCacheGUID,
+		OriginatorClientItemID: originatorClientItemID,
 		ClientDefinedUniqueTag: clientDefinedUniqueTag,
 		Specifics:              specifics,
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
-		DataTypeID:             dataTypeId,
+		DataTypeID:             dataTypeID,
 	}, nil
 }
 
+// CreatePBSyncEntity converts a DB sync entity to a protobuf sync entity.
 func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 	pbEntity := &sync_pb.SyncEntity{
-		IdString: &entity.Id, Version: &entity.Version, Mtime: &entity.Mtime,
+		IdString: &entity.ID, Version: &entity.Version, Mtime: &entity.Mtime,
 		Ctime: &entity.Ctime, Deleted: &entity.Deleted, Folder: &entity.Folder}
 	specifics := &sync_pb.EntitySpecifics{}
 	err := proto.Unmarshal(entity.Specifics, specifics)
@@ -203,8 +208,8 @@ func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 		pbEntity.UniquePosition = uniquePosition
 	}
 
-	if entity.ParentId.Valid {
-		pbEntity.ParentIdString = &entity.ParentId.String
+	if entity.ParentID.Valid {
+		pbEntity.ParentIdString = &entity.ParentID.String
 	}
 
 	if entity.Name.Valid {
@@ -223,12 +228,12 @@ func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 		pbEntity.ClientDefinedUniqueTag = &entity.ClientDefinedUniqueTag.String
 	}
 
-	if entity.OriginatorCacheGuid.Valid {
-		pbEntity.OriginatorCacheGuid = &entity.OriginatorCacheGuid.String
+	if entity.OriginatorCacheGUID.Valid {
+		pbEntity.OriginatorCacheGuid = &entity.OriginatorCacheGUID.String
 	}
 
-	if entity.OriginatorClientItemId.Valid {
-		pbEntity.OriginatorClientItemId = &entity.OriginatorClientItemId.String
+	if entity.OriginatorClientItemID.Valid {
+		pbEntity.OriginatorClientItemId = &entity.OriginatorClientItemID.String
 	}
 
 	return pbEntity, nil
