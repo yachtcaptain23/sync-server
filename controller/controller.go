@@ -9,7 +9,6 @@ import (
 	"github.com/brave-experiments/sync-server/command"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
-	//	"github.com/brave-experiments/sync-server/utils"
 	"github.com/go-chi/chi"
 	"github.com/golang/protobuf/proto"
 )
@@ -18,7 +17,7 @@ import (
 func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/command/", Command(datastore))
-	r.Get("/auth", Auth)
+	r.Post("/auth", Auth)
 	return r
 }
 
