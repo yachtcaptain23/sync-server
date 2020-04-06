@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brave-experiments/sync-server/sync_pb"
+	"github.com/brave-experiments/sync-server/utils"
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 )
@@ -94,31 +95,6 @@ func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFo
 // CreateDBSyncEntity converts a protobuf sync entity into a DB sync entity.
 func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEntity, error) {
 	var err error
-	parentID := sql.NullString{Valid: false}
-	if entity.ParentIdString != nil {
-		parentID = sql.NullString{String: *entity.ParentIdString, Valid: true}
-	}
-	oldParentID := sql.NullString{Valid: false}
-	if entity.OldParentId != nil {
-		oldParentID = sql.NullString{String: *entity.OldParentId, Valid: true}
-	}
-	name := sql.NullString{Valid: false}
-	if entity.Name != nil {
-		name = sql.NullString{String: *entity.Name, Valid: true}
-	}
-	nonUniqueName := sql.NullString{Valid: false}
-	if entity.NonUniqueName != nil {
-		nonUniqueName = sql.NullString{String: *entity.NonUniqueName, Valid: true}
-	}
-	serverDefinedUniqueTag := sql.NullString{Valid: false}
-	if entity.ServerDefinedUniqueTag != nil {
-		serverDefinedUniqueTag = sql.NullString{String: *entity.ServerDefinedUniqueTag, Valid: true}
-	}
-	clientDefinedUniqueTag := sql.NullString{Valid: false}
-	if entity.ClientDefinedUniqueTag != nil {
-		clientDefinedUniqueTag = sql.NullString{String: *entity.ClientDefinedUniqueTag, Valid: true}
-	}
-
 	var specifics []byte
 	// if entity.Specifics != nil {  // TODO: make sure this is present in the
 	// validator
@@ -166,18 +142,18 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEnti
 
 	return &SyncEntity{
 		ID:                     id,
-		ParentID:               parentID,
-		OldParentID:            oldParentID,
+		ParentID:               utils.StringOrNull(entity.ParentIdString),
+		OldParentID:            utils.StringOrNull(entity.OldParentId),
 		Version:                *entity.Version,
 		Ctime:                  *entity.Mtime,
 		Mtime:                  time.Now().Unix(),
-		Name:                   name,
-		NonUniqueName:          nonUniqueName,
-		ServerDefinedUniqueTag: serverDefinedUniqueTag,
+		Name:                   utils.StringOrNull(entity.Name),
+		NonUniqueName:          utils.StringOrNull(entity.NonUniqueName),
+		ServerDefinedUniqueTag: utils.StringOrNull(entity.ServerDefinedUniqueTag),
 		Deleted:                deleted,
 		OriginatorCacheGUID:    originatorCacheGUID,
 		OriginatorClientItemID: originatorClientItemID,
-		ClientDefinedUniqueTag: clientDefinedUniqueTag,
+		ClientDefinedUniqueTag: utils.StringOrNull(entity.ClientDefinedUniqueTag),
 		Specifics:              specifics,
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
@@ -188,8 +164,20 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEnti
 // CreatePBSyncEntity converts a DB sync entity to a protobuf sync entity.
 func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 	pbEntity := &sync_pb.SyncEntity{
-		IdString: &entity.ID, Version: &entity.Version, Mtime: &entity.Mtime,
-		Ctime: &entity.Ctime, Deleted: &entity.Deleted, Folder: &entity.Folder}
+		IdString:               &entity.ID,
+		ParentIdString:         utils.StringPtr(&entity.ParentID),
+		Version:                &entity.Version,
+		Mtime:                  &entity.Mtime,
+		Ctime:                  &entity.Ctime,
+		Name:                   utils.StringPtr(&entity.Name),
+		NonUniqueName:          utils.StringPtr(&entity.NonUniqueName),
+		ServerDefinedUniqueTag: utils.StringPtr(&entity.ServerDefinedUniqueTag),
+		ClientDefinedUniqueTag: utils.StringPtr(&entity.ClientDefinedUniqueTag),
+		OriginatorCacheGuid:    utils.StringPtr(&entity.OriginatorCacheGUID),
+		OriginatorClientItemId: utils.StringPtr(&entity.OriginatorClientItemID),
+		Deleted:                &entity.Deleted,
+		Folder:                 &entity.Folder}
+
 	specifics := &sync_pb.EntitySpecifics{}
 	err := proto.Unmarshal(entity.Specifics, specifics)
 	if err != nil {
@@ -206,34 +194,6 @@ func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 			return nil, err
 		}
 		pbEntity.UniquePosition = uniquePosition
-	}
-
-	if entity.ParentID.Valid {
-		pbEntity.ParentIdString = &entity.ParentID.String
-	}
-
-	if entity.Name.Valid {
-		pbEntity.Name = &entity.Name.String
-	}
-
-	if entity.NonUniqueName.Valid {
-		pbEntity.NonUniqueName = &entity.NonUniqueName.String
-	}
-
-	if entity.ServerDefinedUniqueTag.Valid {
-		pbEntity.ServerDefinedUniqueTag = &entity.ServerDefinedUniqueTag.String
-	}
-
-	if entity.ClientDefinedUniqueTag.Valid {
-		pbEntity.ClientDefinedUniqueTag = &entity.ClientDefinedUniqueTag.String
-	}
-
-	if entity.OriginatorCacheGUID.Valid {
-		pbEntity.OriginatorCacheGuid = &entity.OriginatorCacheGUID.String
-	}
-
-	if entity.OriginatorClientItemID.Valid {
-		pbEntity.OriginatorClientItemId = &entity.OriginatorClientItemID.String
 	}
 
 	return pbEntity, nil
