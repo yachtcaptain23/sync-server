@@ -37,6 +37,7 @@ type SyncEntity struct {
 
 // InsertSyncEntity inserts a new sync entity into postgres database.
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
+	// TODO: Ensure the uniqueness of client_defined_unique_tag here
 	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position)`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
