@@ -55,7 +55,7 @@ func setupRouter(ctx context.Context, logger *zerolog.Logger) (context.Context, 
 		r.Use(middleware.RequestLogger(logger))
 	}
 
-	pg, err := datastore.NewPostgres()
+	pg, err := datastore.NewPostgres(true)
 	if err != nil {
 		fmt.Println("WTF, error = ", err.Error())
 		raven.CaptureErrorAndWait(err, nil)
