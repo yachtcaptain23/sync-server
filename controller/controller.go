@@ -10,6 +10,7 @@ import (
 	"github.com/brave-experiments/sync-server/command"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
+	"github.com/brave-experiments/sync-server/timestamp"
 	"github.com/go-chi/chi"
 	"github.com/golang/protobuf/proto"
 )
@@ -18,14 +19,14 @@ import (
 func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/command/", Command(datastore))
-	r.Post("/auth", Auth)
+	r.Post("/auth", Auth(datastore))
+	r.Get("/timestamp", Timestamp)
 	return r
 }
 
-// Auth handles authentication requests from sync clients.
-func Auth(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("AUTH")
-	body, err := auth.GetAuthRsp(r)
+// Timestamp returns a current timestamp back to sync clients.
+func Timestamp(w http.ResponseWriter, r *http.Request) {
+	body, err := timestamp.GetTimestamp()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -38,6 +39,26 @@ func Auth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// Auth handles authentication requests from sync clients.
+func Auth(pg *datastore.Postgres) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("AUTH")
+		body, err := auth.Authenticate(r, pg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(body)
+		if err != nil {
+			fmt.Println("Error writing response body: ", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
 }
 
 // Command handles GetUpdates and Commit requests from sync clients.
