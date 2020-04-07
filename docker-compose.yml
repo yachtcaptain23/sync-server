@@ -1,0 +1,26 @@
+version: '3'
+
+networks:
+  sync:
+    driver: bridge
+
+services:
+  app:
+    build: .
+    ports:
+      - "8295:8295"
+    volumes:
+      - ./migrations:/src/migrations
+    depends_on:
+      - postgres
+    networks:
+      - sync
+  postgres:
+    image: postgres:12.2
+    ports:
+      - "5432:5432"
+    environment:
+      - "POSTGRES_USER=sync_server"
+      - "POSTGRES_PASSWORD=password"
+    networks:
+      - sync
