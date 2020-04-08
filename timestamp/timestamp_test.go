@@ -2,7 +2,6 @@ package timestamp
 
 import (
 	"encoding/json"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +16,6 @@ func TestGetTimestamp(t *testing.T) {
 	err = json.Unmarshal(rsp, &time)
 	assert.Nil(t, err)
 
-	expectedJSON := "{\"timestamp\":" + strconv.FormatInt(time.Timestamp, 10) + "}"
+	expectedJSON := "{\"timestamp\":\"" + time.Timestamp + "\"}"
 	assert.Equal(t, expectedJSON, string(rsp))
 }

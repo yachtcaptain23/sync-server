@@ -2,10 +2,11 @@ package auth
 
 import (
 	"crypto/ed25519"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/brave-experiments/sync-server/datastore"
@@ -33,35 +34,49 @@ type Response struct {
 // Authenticate validates client's auth requests and provides the reply.
 func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 	var rsp []byte
-	// Unmarshal request
-	var req Request
-	err := json.NewDecoder(r.Body).Decode(&req)
+
+	err := r.ParseForm()
 	if err != nil {
 		return nil, err
+	}
+	fmt.Println("post form:", r.PostForm)
+	req := &Request{
+		PublicKey:       r.PostFormValue("client_id"),
+		Timestamp:       r.PostFormValue("timestamp"),
+		SignedTimestamp: r.PostFormValue("client_secret"),
 	}
 
-	// Verify signature
-	publicKey, err := base64.StdEncoding.DecodeString(req.PublicKey)
+	fmt.Println("sig")
+	// Verify the signature.
+	publicKey, err := hex.DecodeString(req.PublicKey)
 	if err != nil {
 		return nil, err
 	}
-
-	timestamp, err := base64.StdEncoding.DecodeString(req.Timestamp)
+	timestampBytes, err := hex.DecodeString(req.Timestamp)
 	if err != nil {
 		return nil, err
 	}
-
-	signedTimestamp, err := base64.StdEncoding.DecodeString(req.SignedTimestamp)
+	signedTimestamp, err := hex.DecodeString(req.SignedTimestamp)
 	if err != nil {
 		return nil, err
 	}
-	if !ed25519.Verify(publicKey, timestamp, signedTimestamp) {
+	if !ed25519.Verify(publicKey, timestampBytes, signedTimestamp) {
+		fmt.Println("signature verification failed")
 		return nil, fmt.Errorf("signature verification failed")
 	}
 
-	// TODO: Verify the timestamp is not outdated
+	var timestamp int64
+	timestamp, err = strconv.ParseInt(string(timestampBytes), 10, 64)
+	fmt.Println("Verify timestamp:", timestamp)
 
-	// Create a new token, save it in DB, and return it
+	// Verify the timestamp is not outdated
+	if time.Now().Unix()-timestamp > timestampMaxDuration {
+		fmt.Println("timestamp is outdated")
+		return nil, fmt.Errorf("timestamp is outdated")
+	}
+
+	fmt.Println("insert")
+	// Create a new token, save it in DB, and return it.
 	expireAt := time.Now().Add(time.Duration(tokenMaxDuration) * time.Second).Unix()
 	token := uuid.NewV4().String()
 	err = pg.InsertClient(req.PublicKey, token, expireAt)

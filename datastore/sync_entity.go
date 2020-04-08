@@ -33,12 +33,13 @@ type SyncEntity struct {
 	Folder                 bool           `json:"folder" db:"folder"`
 	ClientDefinedUniqueTag sql.NullString `json:"client_defined_unique_tag" db:"client_defined_unique_tag"`
 	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
+	ClientID               string         `db:"client_id"`
 }
 
 // InsertSyncEntity inserts a new sync entity into postgres database.
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 	// TODO: Ensure the uniqueness of client_defined_unique_tag here
-	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position)`
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Insert error: ", err.Error())
@@ -159,6 +160,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEnti
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
 		DataTypeID:             dataTypeID,
+		ClientID:               "brave",
 	}, nil
 }
 

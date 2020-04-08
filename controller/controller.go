@@ -47,6 +47,7 @@ func Auth(pg *datastore.Postgres) http.HandlerFunc {
 		fmt.Println("AUTH")
 		body, err := auth.Authenticate(r, pg)
 		if err != nil {
+			fmt.Println("authenticate error:", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

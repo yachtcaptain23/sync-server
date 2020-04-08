@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"fmt"
 	"time"
 
 	migrate "github.com/golang-migrate/migrate/v4"
@@ -70,6 +71,10 @@ func NewPostgres(performMigration bool) (*Postgres, error) {
 			return nil, err
 		}
 	}
+
+	// TODO: remove me
+	err = pg.InsertClient("brave", "brave5566", time.Now().Add(86400*31*time.Second).Unix())
+	fmt.Println("insert dummy client error:", err.Error())
 
 	return pg, nil
 }
