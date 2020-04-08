@@ -1,16 +1,28 @@
-version: '3'
+version: '3.4'
 
 networks:
   sync:
     driver: bridge
 
 services:
-  app:
-    build: .
-    ports:
-      - "8295:8295"
+  dev:
+    build:
+      context: .
+      target: builder
     volumes:
       - ./migrations:/src/migrations
+    depends_on:
+      - postgres
+    networks:
+      - sync
+  web:
+    build:
+      context: .
+      target: artifact
+    volumes:
+      - ./migrations:/src/migrations
+    ports:
+      - "8295:8295"
     depends_on:
       - postgres
     networks:

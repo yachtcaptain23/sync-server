@@ -16,3 +16,9 @@ lint:
 
 clean:
 	rm -f sync-server
+
+docker:
+	docker-compose build
+
+docker-test:
+	docker-compose -f docker-compose.yml run --rm dev make test
