@@ -10,6 +10,7 @@ require (
 	github.com/getsentry/raven-go v0.2.0
 	github.com/go-chi/chi v4.0.3+incompatible
 	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/golang-migrate/migrate/v4 v4.6.2
 	github.com/golang/protobuf v1.3.2
 	github.com/golangci/gocyclo v0.0.0-20180528144436-0a533e8fa43d // indirect
 	github.com/golangci/golangci-lint v1.23.8 // indirect
