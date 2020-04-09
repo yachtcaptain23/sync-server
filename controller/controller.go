@@ -24,21 +24,25 @@ func SyncRouter(datastore *datastore.Postgres) chi.Router {
 	return r
 }
 
+func sendJSONRsp(body []byte, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	_, err := w.Write(body)
+	if err != nil {
+		fmt.Println("Error writing response body:", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 // Timestamp returns a current timestamp back to sync clients.
 func Timestamp(w http.ResponseWriter, r *http.Request) {
 	body, err := timestamp.GetTimestamp()
 	if err != nil {
+		fmt.Println("error when getting timestamp:", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, err = w.Write(body)
-	if err != nil {
-		fmt.Println("Error writing response body: ", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	sendJSONRsp(body, w)
 }
 
 // Auth handles authentication requests from sync clients.
@@ -51,14 +55,7 @@ func Auth(pg *datastore.Postgres) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, err = w.Write(body)
-		if err != nil {
-			fmt.Println("Error writing response body: ", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		sendJSONRsp(body, w)
 	})
 }
 
