@@ -10,7 +10,9 @@ type Client struct {
 // InsertClient create and insert a new client into clients table.
 func (pg *Postgres) InsertClient(id string, token string, expiresAt int64) error {
 	client := Client{ID: id, Token: token, ExpiresAt: expiresAt}
-	stmt := `INSERT INTO clients(id, token, expires_at) VALUES(:id, :token, :expires_at)`
+	stmt := "INSERT INTO clients(id, token, expires_at) VALUES(:id, :token, :expires_at)" +
+		"ON CONFLICT (id) DO UPDATE SET token = :token, expires_at = :expires_at"
+
 	_, err := pg.NamedExec(stmt, client)
 	return err
 }
