@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/brave-experiments/sync-server/datastore"
@@ -67,6 +68,9 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 
 	var timestamp int64
 	timestamp, err = strconv.ParseInt(string(timestampBytes), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse timestamp error")
+	}
 	fmt.Println("Verify timestamp:", timestamp)
 
 	// Verify the timestamp is not outdated
@@ -87,4 +91,23 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 	authRsp := Response{AccessToken: token, ExpiresIn: tokenMaxDuration}
 	rsp, err = json.Marshal(authRsp)
 	return rsp, err
+}
+
+// Authorize extracts the authorize token from the HTTP request and query the
+// database to return the clientID associated with that token if the token is
+// valid, otherwise, an empty string will be returned.
+func Authorize(pg *datastore.Postgres, r *http.Request) (clientID string) {
+	var token string
+	// Extract token from the header.
+	tokens, ok := r.Header["Authorization"]
+	if ok && len(tokens) >= 1 {
+		token = tokens[0]
+		token = strings.TrimPrefix(token, "Bearer ")
+	}
+	if token == "" {
+		return
+	}
+
+	// Query clients table for the token to return the clientID.
+	return pg.GetClient(token)
 }

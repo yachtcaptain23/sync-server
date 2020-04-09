@@ -1,5 +1,9 @@
 package datastore
 
+import (
+	"time"
+)
+
 // Client is a struct used to represent records in clients table.
 type Client struct {
 	ID        string `db:"id"`
@@ -15,4 +19,17 @@ func (pg *Postgres) InsertClient(id string, token string, expiresAt int64) error
 
 	_, err := pg.NamedExec(stmt, client)
 	return err
+}
+
+// GetClient queries the clients table using token, return the clientID if
+// the token is valid, otherwise, return empty string.
+func (pg *Postgres) GetClient(token string) string {
+	var clientID string
+	err := pg.Get(&clientID, "SELECT id FROM clients WHERE token = $1 AND expires_at > $2",
+		token, time.Now().Unix())
+	if err != nil {
+		return ""
+	}
+
+	return clientID
 }

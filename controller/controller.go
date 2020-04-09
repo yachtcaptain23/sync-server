@@ -62,6 +62,13 @@ func Auth(pg *datastore.Postgres) http.HandlerFunc {
 // Command handles GetUpdates and Commit requests from sync clients.
 func Command(pg *datastore.Postgres) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Authorize
+		clientID := auth.Authorize(pg, r)
+		if clientID == "" {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
 		// Decompress
 		var err error
 		var msg []byte
@@ -90,10 +97,9 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 			http.Error(w, "Unmarshal error", http.StatusInternalServerError)
 			return
 		}
-		// fmt.Println("Received ClientToServerMessage:", pb)
 
 		pbRsp := &sync_pb.ClientToServerResponse{}
-		err = command.HandleClientToServerMessage(pb, pbRsp, pg)
+		err = command.HandleClientToServerMessage(pb, pbRsp, pg, clientID)
 		if err != nil {
 			fmt.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)

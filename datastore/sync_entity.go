@@ -84,18 +84,18 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 
 // GetUpdatesForType retrieves sync entities of a data type where it's mtime
 // is later than the client token.
-func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool) (entities []SyncEntity, err error) {
-	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2"
+func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool, clientID string) (entities []SyncEntity, err error) {
+	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3"
 	if !fetchFolders {
 		stmt += "AND folder = false"
 	}
 	stmt += " ORDER BY mtime"
-	err = pg.Select(&entities, stmt, dataType, clientToken)
+	err = pg.Select(&entities, stmt, dataType, clientToken, clientID)
 	return
 }
 
 // CreateDBSyncEntity converts a protobuf sync entity into a DB sync entity.
-func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEntity, error) {
+func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID string) (*SyncEntity, error) {
 	var err error
 	var specifics []byte
 	// if entity.Specifics != nil {  // TODO: make sure this is present in the
@@ -160,7 +160,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string) (*SyncEnti
 		Folder:                 folder,
 		UniquePosition:         uniquePosition,
 		DataTypeID:             dataTypeID,
-		ClientID:               "brave",
+		ClientID:               clientID,
 	}, nil
 }
 

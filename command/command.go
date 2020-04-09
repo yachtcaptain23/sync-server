@@ -21,7 +21,7 @@ const (
 // handleGetUpdatesRequest handles GetUpdatesMessage and fills
 // GetUpdatesResponse. Target sync entities in the database will be updated or
 // deleted based on the client's requests.
-func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
+func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
@@ -68,9 +68,12 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			guRsp.EncryptionKeys = make([][]byte, 1)
 			guRsp.EncryptionKeys[0] = []byte("1234")
 
+			// TODO: use clientID to check if there is an existing nigori top folder
+			// entry to return directly.
+
 			// Create a nigori top folder entry and save into DB
 			syncEntity := GetNewClientEntity()
-			entityToCommit, err := datastore.CreateDBSyncEntity(syncEntity, "")
+			entityToCommit, err := datastore.CreateDBSyncEntity(syncEntity, "", clientID)
 			if err != nil {
 				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
 				return &errCode, nil
@@ -91,7 +94,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 				return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
 			}
 
-			entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders)
+			entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
 			if err != nil {
 				fmt.Println("pg.GetUpdatesForType error:", err.Error())
 				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
@@ -123,7 +126,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 
 // handleCommitRequest handles the commit message and fills the commit response.
 // New sync entity is created and inserted into the database.
-func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, pg *datastore.Postgres) (*sync_pb.SyncEnums_ErrorType, error) {
+func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, pg *datastore.Postgres, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("COMMIT RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
@@ -134,7 +137,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// return bad message when any required fields are invalid.
 			entryRsp := &sync_pb.CommitResponse_EntryResponse{}
 			commitRsp.Entryresponse[i] = entryRsp
-			entityToCommit, err := datastore.CreateDBSyncEntity(v, *commitMsg.CacheGuid)
+			entityToCommit, err := datastore.CreateDBSyncEntity(v, *commitMsg.CacheGuid, clientID)
 			if err != nil {
 				rspType := sync_pb.CommitResponse_INVALID_MESSAGE
 				entryRsp.ResponseType = &rspType
@@ -192,7 +195,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 
 // HandleClientToServerMessage handles the protobuf ClientToServerMessage and
 // fills the protobuf ClientToServerResponse.
-func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, pg *datastore.Postgres) error {
+func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, pg *datastore.Postgres, clientID string) error {
 	// Create ClientToServerResponse and fill general fields for both GU and
 	// Commit.
 	pbRsp.StoreBirthday = utils.String(storeBirthday)
@@ -205,11 +208,11 @@ func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_
 	if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {
 		guRsp := &sync_pb.GetUpdatesResponse{}
 		pbRsp.GetUpdates = guRsp
-		pbRsp.ErrorCode, err = handleGetUpdatesRequest(pb.GetUpdates, guRsp, pg)
+		pbRsp.ErrorCode, err = handleGetUpdatesRequest(pb.GetUpdates, guRsp, pg, clientID)
 	} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
 		commitRsp := &sync_pb.CommitResponse{}
 		pbRsp.Commit = commitRsp
-		pbRsp.ErrorCode, err = handleCommitRequest(pb.Commit, commitRsp, pg)
+		pbRsp.ErrorCode, err = handleCommitRequest(pb.Commit, commitRsp, pg, clientID)
 	} else {
 		return fmt.Errorf("unsupported message type of ClientToServerMessage")
 	}
