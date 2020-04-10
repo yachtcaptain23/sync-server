@@ -68,25 +68,18 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			guRsp.EncryptionKeys = make([][]byte, 1)
 			guRsp.EncryptionKeys[0] = []byte("1234")
 
-			// TODO: use clientID to check if there is an existing nigori top folder
-			// entry to return directly.
-
-			// Create a nigori top folder entry and save into DB
-			syncEntity := GetNewClientEntity()
-			entityToCommit, err := datastore.CreateDBSyncEntity(syncEntity, "", clientID)
+			// Get protobuf and DB formated nigori top level folder entity for this
+			// new client.
+			pbEntity, dbEntity, err := GetNewClientEntity(pg, clientID)
 			if err != nil {
-				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-				return &errCode, nil
-			}
-			err = pg.InsertSyncEntity(entityToCommit)
-			if err != nil {
+				fmt.Println(err.Error())
 				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
 				return &errCode, nil
 			}
 
-			guRsp.Entries = append(guRsp.Entries, syncEntity)
+			guRsp.Entries = append(guRsp.Entries, pbEntity)
 			guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
-			binary.PutVarint(guRsp.NewProgressMarker[i].Token, entityToCommit.Mtime)
+			binary.PutVarint(guRsp.NewProgressMarker[i].Token, dbEntity.Mtime)
 		} else { // Query DB to get update entries for a given data type
 			token, n := binary.Varint(guRsp.NewProgressMarker[i].Token)
 			if n <= 0 {
