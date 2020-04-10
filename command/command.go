@@ -131,7 +131,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			entryRsp := &sync_pb.CommitResponse_EntryResponse{}
 			commitRsp.Entryresponse[i] = entryRsp
 			entityToCommit, err := datastore.CreateDBSyncEntity(v, *commitMsg.CacheGuid, clientID)
-			if err != nil {
+			if err != nil { // Can't unmarshal & marshal the message from PB into DB format
 				rspType := sync_pb.CommitResponse_INVALID_MESSAGE
 				entryRsp.ResponseType = &rspType
 				continue
@@ -141,14 +141,14 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				entityToCommit.Version++
 				err = pg.InsertSyncEntity(entityToCommit)
 				if err != nil {
-					rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
 				}
 			} else { // Update
 				match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
 				if err != nil {
-					rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
 				}
@@ -160,7 +160,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				entityToCommit.Version++
 				err = pg.UpdateSyncEntity(entityToCommit)
 				if err != nil {
-					rspType := sync_pb.CommitResponse_INVALID_MESSAGE
+					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
 				}
