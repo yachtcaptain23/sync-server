@@ -22,5 +22,7 @@ CREATE TABLE sync_entities (
   folder boolean NOT NULL,
   client_defined_unique_tag varchar(255),
   unique_position bytea,
-  client_id varchar(255) not null references clients(id)
+  client_id varchar(255) not null references clients(id),
+  unique (client_id, server_defined_unique_tag),
+  unique (client_id, client_defined_unique_tag)
 );
