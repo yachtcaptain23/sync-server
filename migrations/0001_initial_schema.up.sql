@@ -1,7 +1,7 @@
 CREATE TABLE clients (
   id varchar(255) PRIMARY KEY,
   token varchar(255) NOT NULL,
-  expires_at bigint NOT NULL
+  expire_at bigint NOT NULL
 );
 
 CREATE TABLE sync_entities (
