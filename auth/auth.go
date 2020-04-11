@@ -83,7 +83,7 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 	// Create a new token, save it in DB, and return it.
 	expireAt := time.Now().Add(time.Duration(tokenMaxDuration) * time.Second).Unix()
 	token := uuid.NewV4().String()
-	err = pg.InsertClient(req.PublicKey, token, expireAt)
+	_, err = pg.InsertClient(req.PublicKey, token, expireAt)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 // Authorize extracts the authorize token from the HTTP request and query the
 // database to return the clientID associated with that token if the token is
 // valid, otherwise, an empty string will be returned.
-func Authorize(pg *datastore.Postgres, r *http.Request) (clientID string) {
+func Authorize(pg *datastore.Postgres, r *http.Request) (clientID string, err error) {
 	var token string
 	// Extract token from the header.
 	tokens, ok := r.Header["Authorization"]

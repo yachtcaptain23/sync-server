@@ -63,14 +63,16 @@ func Auth(pg *datastore.Postgres) http.HandlerFunc {
 func Command(pg *datastore.Postgres) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Authorize
-		clientID := auth.Authorize(pg, r)
+		clientID, err := auth.Authorize(pg, r)
 		if clientID == "" {
+			if err != nil {
+				fmt.Println("error while authorizing:", err.Error())
+			}
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
 
 		// Decompress
-		var err error
 		var msg []byte
 		var gr *gzip.Reader
 		if r.Header.Get("Content-Encoding") == "gzip" {
