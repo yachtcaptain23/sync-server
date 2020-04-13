@@ -14,15 +14,16 @@ CREATE TABLE sync_entities (
   name VARCHAR(255),
   non_unique_name varchar(255),
   server_defined_unique_tag varchar(255),
-  deleted boolean NOT NULL,
+  deleted_at bigint DEFAULT NULL,
   originator_cache_guid varchar(255),
   originator_client_item_id varchar(255),
   specifics bytea,
-  data_type_id int,
+  data_type_id int NOT NULL,
   folder boolean NOT NULL,
   client_defined_unique_tag varchar(255),
   unique_position bytea,
-  client_id varchar(255) not null references clients(id),
-  unique (client_id, server_defined_unique_tag),
-  unique (client_id, client_defined_unique_tag)
+  client_id varchar(255) NOT NULL references clients(id)
 );
+
+CREATE UNIQUE INDEX unique_server_tag ON sync_entities(client_id, server_defined_unique_tag) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX unique_client_tag ON sync_entities(client_id, client_defined_unique_tag) WHERE deleted_at IS NULL;

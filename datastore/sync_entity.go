@@ -16,30 +16,29 @@ import (
 
 // SyncEntity represents the underline DB schema of sync entities.
 type SyncEntity struct {
-	ID                     string         `json:"id_string" db:"id"`
-	ParentID               sql.NullString `json:"parent_id_string" db:"parent_id"`
-	OldParentID            sql.NullString `json:"old_parent_id" db:"old_parent_id"`
-	Version                int64          `json:"version" db:"version"`
-	Mtime                  int64          `json:"mtime" db:"mtime"`
-	Ctime                  int64          `json:"ctime" db:"ctime"`
-	Name                   sql.NullString `json:"name" db:"name"`
-	NonUniqueName          sql.NullString `json:"non_unique_name" db:"non_unique_name"`
-	ServerDefinedUniqueTag sql.NullString `json:"server_defined_unique_tag" db:"server_defined_unique_tag"`
-	Deleted                bool           `json:"deleted" db:"deleted"`
-	OriginatorCacheGUID    sql.NullString `json:"originator_cache_guid" db:"originator_cache_guid"`
-	OriginatorClientItemID sql.NullString `json:"originator_client_item_id" db:"originator_client_item_id"`
-	Specifics              []byte         `json:"specifics" db:"specifics"`
-	DataTypeID             int            `json:"data_type_id" db:"data_type_id"`
-	Folder                 bool           `json:"folder" db:"folder"`
-	ClientDefinedUniqueTag sql.NullString `json:"client_defined_unique_tag" db:"client_defined_unique_tag"`
-	UniquePosition         []byte         `json:"unique_position" db:"unique_position"`
+	ID                     string         `db:"id"`
+	ParentID               sql.NullString `db:"parent_id"`
+	OldParentID            sql.NullString `db:"old_parent_id"`
+	Version                int64          `db:"version"`
+	Mtime                  int64          `db:"mtime"`
+	Ctime                  int64          `db:"ctime"`
+	Name                   sql.NullString `db:"name"`
+	NonUniqueName          sql.NullString `db:"non_unique_name"`
+	ServerDefinedUniqueTag sql.NullString `db:"server_defined_unique_tag"`
+	DeletedAt              sql.NullInt64  `db:"deleted_at"`
+	OriginatorCacheGUID    sql.NullString `db:"originator_cache_guid"`
+	OriginatorClientItemID sql.NullString `db:"originator_client_item_id"`
+	Specifics              []byte         `db:"specifics"`
+	DataTypeID             int            `db:"data_type_id"`
+	Folder                 bool           `db:"folder"`
+	ClientDefinedUniqueTag sql.NullString `db:"client_defined_unique_tag"`
+	UniquePosition         []byte         `db:"unique_position"`
 	ClientID               string         `db:"client_id"`
 }
 
 // InsertSyncEntity inserts a new sync entity into postgres database.
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
-	// TODO: Ensure the uniqueness of client_defined_unique_tag here
-	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Insert error: ", err.Error())
@@ -49,11 +48,11 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 
 // UpdateSyncEntity updates a sync entity in postgres database.
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	if entity.Deleted {
-		return pg.deleteSyncEntity(entity.ID)
+	if entity.DeletedAt.Valid {
+		return pg.deleteSyncEntity(entity.ID, entity.DeletedAt.Int64)
 	}
 
-	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
+	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id AND deleted_at IS NULL`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Update error: ", err.Error())
@@ -61,8 +60,8 @@ func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
 	return err
 }
 
-func (pg *Postgres) deleteSyncEntity(id string) error {
-	_, err := pg.Exec(`UPDATE sync_entities SET deleted = true WHERE id = $1`, id)
+func (pg *Postgres) deleteSyncEntity(id string, deletedAt int64) error {
+	_, err := pg.Exec(`UPDATE sync_entities SET deleted_at = $1 WHERE id = $2`, deletedAt, id)
 	if err != nil {
 		fmt.Println("Delete error: ", err.Error())
 	}
@@ -73,7 +72,7 @@ func (pg *Postgres) deleteSyncEntity(id string) error {
 // the saved server version against the client version.
 func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 	var serverVersion int64
-	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1", id)
+	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1 AND deleted_at IS NULL", id)
 	if err != nil {
 		fmt.Println("Get version error: ", err.Error(), "id: ", id)
 		return false, nil
@@ -85,7 +84,7 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 // GetUpdatesForType retrieves sync entities of a data type where it's mtime
 // is later than the client token.
 func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool, clientID string) (entities []SyncEntity, err error) {
-	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3"
+	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3 AND deleted_at IS NULL"
 	if !fetchFolders {
 		stmt += "AND folder = false"
 	}
@@ -99,7 +98,7 @@ func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFo
 func (pg *Postgres) GetServerDefinedUniqueEntity(tag string, clientID string) (*SyncEntity, error) {
 	var entity SyncEntity
 	err := pg.Get(&entity,
-		"SELECT * FROM sync_entities WHERE server_defined_unique_tag = $1 AND client_id = $2",
+		"SELECT * FROM sync_entities WHERE server_defined_unique_tag = $1 AND client_id = $2 AND deleted_at IS NULL",
 		tag, clientID)
 	return &entity, err
 }
@@ -136,6 +135,13 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 	if entity.Deleted != nil {
 		deleted = *entity.Deleted
 	}
+	var deletedAt sql.NullInt64
+	if deleted {
+		deletedAt = sql.NullInt64{Int64: time.Now().Unix(), Valid: true}
+	} else {
+		deletedAt = sql.NullInt64{Int64: 0, Valid: false}
+	}
+
 	folder := false
 	if entity.Folder != nil {
 		folder = *entity.Folder
@@ -162,7 +168,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 		Name:                   utils.StringOrNull(entity.Name),
 		NonUniqueName:          utils.StringOrNull(entity.NonUniqueName),
 		ServerDefinedUniqueTag: utils.StringOrNull(entity.ServerDefinedUniqueTag),
-		Deleted:                deleted,
+		DeletedAt:              deletedAt,
 		OriginatorCacheGUID:    originatorCacheGUID,
 		OriginatorClientItemID: originatorClientItemID,
 		ClientDefinedUniqueTag: utils.StringOrNull(entity.ClientDefinedUniqueTag),
@@ -188,7 +194,7 @@ func CreatePBSyncEntity(entity *SyncEntity) (*sync_pb.SyncEntity, error) {
 		ClientDefinedUniqueTag: utils.StringPtr(&entity.ClientDefinedUniqueTag),
 		OriginatorCacheGuid:    utils.StringPtr(&entity.OriginatorCacheGUID),
 		OriginatorClientItemId: utils.StringPtr(&entity.OriginatorClientItemID),
-		Deleted:                &entity.Deleted,
+		Deleted:                &entity.DeletedAt.Valid,
 		Folder:                 &entity.Folder}
 
 	specifics := &sync_pb.EntitySpecifics{}
