@@ -16,6 +16,15 @@ func TestStringOrNull(t *testing.T) {
 	assert.Equal(t, StringOrNull(&v), sql.NullString{String: v, Valid: true})
 }
 
+func TestInt64OrNull(t *testing.T) {
+	// Passing nil should returns invalid sql.NullInt64
+	assert.False(t, Int64OrNull(nil).Valid)
+
+	// Passing a normal int64 pointer should returns a valid sql.NullInt64.
+	v := int64(123)
+	assert.Equal(t, Int64OrNull(&v), sql.NullInt64{Int64: v, Valid: true})
+}
+
 func TestStringPtr(t *testing.T) {
 	// Invalid sql.NullString should returns nil.
 	nullString := &sql.NullString{String: "", Valid: false}
