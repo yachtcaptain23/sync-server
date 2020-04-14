@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -48,24 +49,19 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 
 // UpdateSyncEntity updates a sync entity in postgres database.
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	if entity.DeletedAt.Valid {
-		return pg.deleteSyncEntity(entity.ID, entity.DeletedAt.Int64)
+	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id AND deleted_at IS NULL`
+
+	result, err := pg.NamedExec(stmt, *entity)
+	if err != nil {
+		return err
 	}
 
-	stmt := `UPDATE sync_entities SET parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id AND deleted_at IS NULL`
-	_, err := pg.NamedExec(stmt, *entity)
-	if err != nil {
-		fmt.Println("Update error: ", err.Error())
+	rowsAffected, err := result.RowsAffected()
+	if rowsAffected == 0 || err != nil {
+		return errors.New("No rows updated")
 	}
-	return err
-}
 
-func (pg *Postgres) deleteSyncEntity(id string, deletedAt int64) error {
-	_, err := pg.Exec(`UPDATE sync_entities SET deleted_at = $1 WHERE id = $2`, deletedAt, id)
-	if err != nil {
-		fmt.Println("Delete error: ", err.Error())
-	}
-	return err
+	return nil
 }
 
 // CheckVersion get the sync entry with id saved in the database and checks
