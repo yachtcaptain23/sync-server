@@ -82,7 +82,7 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool, clientID string) (entities []SyncEntity, err error) {
 	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3 AND deleted_at IS NULL"
 	if !fetchFolders {
-		stmt += "AND folder = false"
+		stmt += " AND folder = false"
 	}
 	stmt += " ORDER BY mtime"
 	err = pg.Select(&entities, stmt, dataType, clientToken, clientID)
