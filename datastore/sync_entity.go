@@ -102,15 +102,14 @@ func (pg *Postgres) GetServerDefinedUniqueEntity(tag string, clientID string) (*
 // CreateDBSyncEntity converts a protobuf sync entity into a DB sync entity.
 func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID string) (*SyncEntity, error) {
 	var err error
-	var specifics []byte
-	// if entity.Specifics != nil {  // TODO: make sure this is present in the
-	// validator
-	specifics, err = proto.Marshal(entity.Specifics)
-	if err != nil {
-		fmt.Println("Marshal Error", err.Error())
-		return nil, err
+	specifics := []byte{}
+	if entity.Specifics != nil { // TODO: make sure this is present in the validator
+		specifics, err = proto.Marshal(entity.Specifics)
+		if err != nil {
+			fmt.Println("Marshal Error", err.Error())
+			return nil, err
+		}
 	}
-	// }
 
 	// TODO: wrap getting type ID into an util function
 	structField := reflect.ValueOf(entity.Specifics.SpecificsVariant).Elem().Type().Field(0)
@@ -118,7 +117,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 	s := strings.Split(tag, ",")
 	dataTypeID, _ := strconv.Atoi(s[1])
 
-	var uniquePosition []byte
+	uniquePosition := []byte{}
 	if entity.UniquePosition != nil {
 		uniquePosition, err = proto.Marshal(entity.UniquePosition)
 		if err != nil {

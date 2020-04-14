@@ -17,11 +17,11 @@ CREATE TABLE sync_entities (
   deleted_at bigint DEFAULT NULL,
   originator_cache_guid varchar(255),
   originator_client_item_id varchar(255),
-  specifics bytea,
+  specifics bytea NOT NULL,
   data_type_id int NOT NULL,
   folder boolean NOT NULL,
   client_defined_unique_tag varchar(255),
-  unique_position bytea,
+  unique_position bytea NOT NULL,
   client_id varchar(255) NOT NULL references clients(id)
 );
 
