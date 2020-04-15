@@ -1,6 +1,8 @@
 package datastore
 
 import (
+	"database/sql"
+	"fmt"
 	"time"
 
 	migrate "github.com/golang-migrate/migrate/v4"
@@ -72,4 +74,14 @@ func NewPostgres(performMigration bool) (*Postgres, error) {
 	}
 
 	return pg, nil
+}
+
+// RollbackTx rolls back a transaction (useful with defer)
+func (pg *Postgres) RollbackTx(tx *sqlx.Tx) {
+	err := tx.Rollback()
+	if err != nil && err != sql.ErrTxDone {
+		fmt.Println("rollback with error", err.Error())
+		// sentry.CaptureMessage(err.Error())
+		// sentry.Flush(time.Second * 2)
+	}
 }

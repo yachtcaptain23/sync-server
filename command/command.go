@@ -25,6 +25,16 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
+	if *guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
+		fmt.Println("NEW CLIENT")
+		err := CreateServerDefinedUniqueEntities(pg, clientID)
+		if err != nil {
+			fmt.Println("Create server defined unique entities error:", err.Error())
+			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+			return &errCode, nil
+		}
+	}
+
 	changesRemaining := int64(0)
 	guRsp.ChangesRemaining = &changesRemaining
 
@@ -60,57 +70,42 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 
 		if *fromProgressMarker.DataTypeId == nigoriTypeID &&
 			*guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
-			fmt.Println("NEW CLIENT")
-
 			// Bypassing chromium's restriction here, our server won't provide the
 			// initial encryption keys like chromium does, this will be overwritten
 			// by our client.
 			guRsp.EncryptionKeys = make([][]byte, 1)
 			guRsp.EncryptionKeys[0] = []byte("1234")
+		}
 
-			// Get protobuf and DB formated nigori top level folder entity for this
-			// new client.
-			pbEntity, dbEntity, err := GetNewClientEntity(pg, clientID)
+		token, n := binary.Varint(guRsp.NewProgressMarker[i].Token)
+		if n <= 0 {
+			// TODO: return bad message instead
+			return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
+		}
+
+		entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
+		if err != nil {
+			fmt.Println("pg.GetUpdatesForType error:", err.Error())
+			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
+			return &errCode, nil
+		}
+
+		// Fill the PB entry from above DB entries until maxSize is reached.
+		j := 0
+		for ; j < len(entities) && len(guRsp.Entries) < cap(guRsp.Entries); j++ {
+			entity, err := datastore.CreatePBSyncEntity(&entities[j])
 			if err != nil {
-				fmt.Println(err.Error())
 				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
 				return &errCode, nil
 			}
+			guRsp.Entries = append(guRsp.Entries, entity)
+		}
+		changesRemaining += int64(len(entities) - j)
 
-			guRsp.Entries = append(guRsp.Entries, pbEntity)
+		// If entities are appended, use the lastest mtime as returned token.
+		if j != 0 {
 			guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
-			binary.PutVarint(guRsp.NewProgressMarker[i].Token, dbEntity.Mtime)
-		} else { // Query DB to get update entries for a given data type
-			token, n := binary.Varint(guRsp.NewProgressMarker[i].Token)
-			if n <= 0 {
-				// TODO: return bad message instead
-				return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
-			}
-
-			entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
-			if err != nil {
-				fmt.Println("pg.GetUpdatesForType error:", err.Error())
-				errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-				return &errCode, nil
-			}
-
-			// Fill the PB entry from above DB entries until maxSize is reached.
-			j := 0
-			for ; j < len(entities) && len(guRsp.Entries) < cap(guRsp.Entries); j++ {
-				entity, err := datastore.CreatePBSyncEntity(&entities[j])
-				if err != nil {
-					errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
-					return &errCode, nil
-				}
-				guRsp.Entries = append(guRsp.Entries, entity)
-			}
-			changesRemaining += int64(len(entities) - j)
-
-			// If entities are appended, use the lastest mtime as returned token.
-			if j != 0 {
-				guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
-				binary.PutVarint(guRsp.NewProgressMarker[i].Token, *guRsp.Entries[j-1].Mtime)
-			}
+			binary.PutVarint(guRsp.NewProgressMarker[i].Token, *guRsp.Entries[j-1].Mtime)
 		}
 	}
 

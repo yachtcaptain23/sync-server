@@ -12,6 +12,7 @@ import (
 	"github.com/brave-experiments/sync-server/sync_pb"
 	"github.com/brave-experiments/sync-server/utils"
 	"github.com/golang/protobuf/proto"
+	"github.com/jmoiron/sqlx"
 	"github.com/satori/go.uuid"
 )
 
@@ -44,6 +45,26 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 	if err != nil {
 		fmt.Println("Insert error: ", err.Error())
 	}
+	return err
+}
+
+// InsertSyncEntities inserts an array of entities in a single transaction.
+func (pg *Postgres) InsertSyncEntities(entities []*SyncEntity) error {
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
+	tx, err := pg.DB.Beginx()
+	if err != nil {
+		return err
+	}
+	defer pg.RollbackTx(tx)
+
+	for _, entity := range entities {
+		_, err := tx.NamedExec(stmt, *entity)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = tx.Commit()
 	return err
 }
 
@@ -97,6 +118,21 @@ func (pg *Postgres) GetServerDefinedUniqueEntity(tag string, clientID string) (*
 		"SELECT * FROM sync_entities WHERE server_defined_unique_tag = $1 AND client_id = $2 AND deleted_at IS NULL",
 		tag, clientID)
 	return &entity, err
+}
+
+// IsServerDefinedUniqueEntitiesReady returns wehter sync entities with server
+// defined unique tags for a specific client are ready in DB.
+func (pg *Postgres) IsServerDefinedUniqueEntitiesReady(tags []string, clientID string) (bool, error) {
+	var count int
+	query, args, err := sqlx.In(
+		`SELECT COUNT(*) FROM sync_entities WHERE client_id = ? AND server_defined_unique_tag IN (?);`,
+		clientID, tags)
+	if err != nil {
+		return false, err
+	}
+	query = pg.DB.Rebind(query)
+	err = pg.Get(&count, query, args...)
+	return count == len(tags), err
 }
 
 // CreateDBSyncEntity converts a protobuf sync entity into a DB sync entity.
