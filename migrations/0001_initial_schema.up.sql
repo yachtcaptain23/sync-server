@@ -1,7 +1,11 @@
 CREATE TABLE clients (
+  id varchar(255) PRIMARY KEY
+);
+
+CREATE TABLE tokens (
   id varchar(255) PRIMARY KEY,
-  token varchar(255) NOT NULL,
-  expire_at bigint NOT NULL
+  expire_at bigint NOT NULL,
+  client_id varchar(255) not null references clients(id)
 );
 
 CREATE TABLE sync_entities (

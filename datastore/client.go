@@ -12,6 +12,7 @@ type Client struct {
 	ExpireAt int64  `db:"expire_at"`
 }
 
+// TODO: remove this.
 // InsertClient create and insert a new client into clients table.
 func (pg *Postgres) InsertClient(id string, token string, expireAt int64) (*Client, error) {
 	client := Client{ID: id, Token: token, ExpireAt: expireAt}
@@ -28,11 +29,35 @@ func (pg *Postgres) InsertClient(id string, token string, expireAt int64) (*Clie
 	return &savedClient, err
 }
 
-// GetClient queries the clients table using token, return the clientID if
+// InsertClientToken creates and inserts a new client into clients table if not
+// exists, and inserts the token into tokens table.
+func (pg *Postgres) InsertClientToken(id string, token string, expireAt int64) error {
+	tx, err := pg.DB.Beginx()
+	if err != nil {
+		return err
+	}
+	defer pg.RollbackTx(tx)
+
+	_, err = tx.Exec(`INSERT INTO clients (id) VALUES ($1) ON CONFLICT DO NOTHING;`, id)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(`INSERT INTO tokens (id, expire_at, client_id) VALUES ($1, $2, $3);`,
+		token, expireAt, id)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
+}
+
+// GetClientID queries the tokens table using token, return the clientID if
 // the token is valid, otherwise, return empty string.
-func (pg *Postgres) GetClient(token string) (string, error) {
+func (pg *Postgres) GetClientID(token string) (string, error) {
 	var clientID string
-	err := pg.Get(&clientID, "SELECT id FROM clients WHERE token = $1 AND expire_at > $2",
+	err := pg.Get(&clientID, "SELECT client_id FROM tokens WHERE id = $1 AND expire_at > $2",
 		token, time.Now().Unix())
 	if err == sql.ErrNoRows {
 		return "", nil

@@ -83,7 +83,7 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 	// Create a new token, save it in DB, and return it.
 	expireAt := time.Now().Add(time.Duration(tokenMaxDuration) * time.Second).Unix()
 	token := uuid.NewV4().String()
-	_, err = pg.InsertClient(req.PublicKey, token, expireAt)
+	err = pg.InsertClientToken(req.PublicKey, token, expireAt)
 	if err != nil {
 		return nil, err
 	}
@@ -109,5 +109,5 @@ func Authorize(pg *datastore.Postgres, r *http.Request) (clientID string, err er
 	}
 
 	// Query clients table for the token to return the clientID.
-	return pg.GetClient(token)
+	return pg.GetClientID(token)
 }
