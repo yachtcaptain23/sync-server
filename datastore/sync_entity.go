@@ -179,14 +179,14 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 	}
 
 	id := *entity.IdString
-	originatorCacheGUID := sql.NullString{Valid: false}
-	originatorClientItemID := sql.NullString{Valid: false}
+	originatorCacheGUID := utils.StringOrNull(nil)
+	originatorClientItemID := utils.StringOrNull(nil)
 	if len(cacheGUID) > 0 {
 		if *entity.Version == 0 {
 			id = uuid.NewV4().String()
 		}
-		originatorCacheGUID = sql.NullString{String: cacheGUID, Valid: true}
-		originatorClientItemID = sql.NullString{String: *entity.IdString, Valid: true}
+		originatorCacheGUID = utils.StringOrNull(&cacheGUID)
+		originatorClientItemID = utils.StringOrNull(entity.IdString)
 	}
 
 	now := time.Now().Unix()
