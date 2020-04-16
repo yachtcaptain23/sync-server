@@ -189,13 +189,22 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 		originatorClientItemID = sql.NullString{String: *entity.IdString, Valid: true}
 	}
 
+	now := time.Now().Unix()
+	// ctime is only used when inserting a new entity, here we use client passed
+	// ctime if it is passed, otherwise, use current server time as the creation
+	// time. When updating, ctime will be ignored later in the query statement.
+	cTime := now
+	if entity.Ctime != nil {
+		cTime = *entity.Ctime
+	}
+
 	return &SyncEntity{
 		ID:                     id,
 		ParentID:               utils.StringOrNull(entity.ParentIdString),
 		OldParentID:            utils.StringOrNull(entity.OldParentId),
 		Version:                *entity.Version,
-		Ctime:                  *entity.Mtime,
-		Mtime:                  time.Now().Unix(),
+		Ctime:                  cTime,
+		Mtime:                  now,
 		Name:                   utils.StringOrNull(entity.Name),
 		NonUniqueName:          utils.StringOrNull(entity.NonUniqueName),
 		ServerDefinedUniqueTag: utils.StringOrNull(entity.ServerDefinedUniqueTag),
