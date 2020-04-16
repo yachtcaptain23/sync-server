@@ -40,7 +40,7 @@ type SyncEntity struct {
 
 // InsertSyncEntity inserts a new sync entity into postgres database.
 func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
-	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, 1, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
 	_, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
 		fmt.Println("Insert error: ", err.Error())
@@ -50,7 +50,7 @@ func (pg *Postgres) InsertSyncEntity(entity *SyncEntity) error {
 
 // InsertSyncEntities inserts an array of entities in a single transaction.
 func (pg *Postgres) InsertSyncEntities(entities []*SyncEntity) error {
-	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, :version, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
+	stmt := `INSERT INTO sync_entities(id, parent_id, old_parent_id, version, mtime, ctime, name, non_unique_name, server_defined_unique_tag, deleted_at, originator_cache_guid, originator_client_item_id, specifics, data_type_id, folder, client_defined_unique_tag, unique_position, client_id) VALUES(:id, :parent_id, :old_parent_id, 1, :mtime, :ctime, :name, :non_unique_name, :server_defined_unique_tag, :deleted_at, :originator_cache_guid, :originator_client_item_id, :specifics, :data_type_id, :folder, :client_defined_unique_tag, :unique_position, :client_id)`
 	tx, err := pg.DB.Beginx()
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func (pg *Postgres) InsertSyncEntities(entities []*SyncEntity) error {
 
 // UpdateSyncEntity updates a sync entity in postgres database.
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
+	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = version + 1, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
 
 	result, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
