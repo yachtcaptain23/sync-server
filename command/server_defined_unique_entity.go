@@ -23,7 +23,7 @@ const (
 )
 
 func createServerDefinedUniqueEntity(name string, serverDefinedTag string, clientID string, parentID string, specifics *sync_pb.EntitySpecifics) (*datastore.SyncEntity, error) {
-	now := time.Now().Unix()
+	now := utils.UnixMilli(time.Now())
 	deleted := false
 	folder := true
 	version := int64(1)

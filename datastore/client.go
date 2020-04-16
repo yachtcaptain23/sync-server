@@ -3,6 +3,8 @@ package datastore
 import (
 	"database/sql"
 	"time"
+
+	"github.com/brave-experiments/sync-server/utils"
 )
 
 // Client is a struct used to represent records in clients table.
@@ -58,7 +60,7 @@ func (pg *Postgres) InsertClientToken(id string, token string, expireAt int64) e
 func (pg *Postgres) GetClientID(token string) (string, error) {
 	var clientID string
 	err := pg.Get(&clientID, "SELECT client_id FROM tokens WHERE id = $1 AND expire_at > $2",
-		token, time.Now().Unix())
+		token, utils.UnixMilli(time.Now()))
 	if err == sql.ErrNoRows {
 		return "", nil
 	} else if err != nil {

@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/brave-experiments/sync-server/datastore"
+	"github.com/brave-experiments/sync-server/utils"
 	"github.com/satori/go.uuid"
 )
 
 const (
-	timestampMaxDuration int64 = 120
-	tokenMaxDuration     int64 = 86400
+	timestampMaxDuration int64 = 120 * 1e3   // Milliseconds
+	tokenMaxDuration     int64 = 86400 * 1e3 // Milliseconds
 )
 
 // Request is a struct used for authenication requests.
@@ -74,14 +75,14 @@ func Authenticate(r *http.Request, pg *datastore.Postgres) ([]byte, error) {
 	fmt.Println("Verify timestamp:", timestamp)
 
 	// Verify the timestamp is not outdated
-	if time.Now().Unix()-timestamp > timestampMaxDuration {
+	if utils.UnixMilli(time.Now())-timestamp > timestampMaxDuration {
 		fmt.Println("timestamp is outdated")
 		return nil, fmt.Errorf("timestamp is outdated")
 	}
 
 	fmt.Println("insert")
 	// Create a new token, save it in DB, and return it.
-	expireAt := time.Now().Add(time.Duration(tokenMaxDuration) * time.Second).Unix()
+	expireAt := utils.UnixMilli(time.Now().Add(time.Duration(tokenMaxDuration) * time.Millisecond))
 	token := uuid.NewV4().String()
 	err = pg.InsertClientToken(req.PublicKey, token, expireAt)
 	if err != nil {

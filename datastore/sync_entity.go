@@ -168,7 +168,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 	}
 	var deletedAt sql.NullInt64
 	if deleted {
-		deletedAt = sql.NullInt64{Int64: time.Now().Unix(), Valid: true}
+		deletedAt = sql.NullInt64{Int64: utils.UnixMilli(time.Now()), Valid: true}
 	} else {
 		deletedAt = sql.NullInt64{Int64: 0, Valid: false}
 	}
@@ -189,7 +189,7 @@ func CreateDBSyncEntity(entity *sync_pb.SyncEntity, cacheGUID string, clientID s
 		originatorClientItemID = utils.StringOrNull(entity.IdString)
 	}
 
-	now := time.Now().Unix()
+	now := utils.UnixMilli(time.Now())
 	// ctime is only used when inserting a new entity, here we use client passed
 	// ctime if it is passed, otherwise, use current server time as the creation
 	// time. When updating, ctime will be ignored later in the query statement.
