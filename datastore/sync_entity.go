@@ -70,7 +70,7 @@ func (pg *Postgres) InsertSyncEntities(entities []*SyncEntity) error {
 
 // UpdateSyncEntity updates a sync entity in postgres database.
 func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id AND deleted_at IS NULL`
+	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = :version, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
 
 	result, err := pg.NamedExec(stmt, *entity)
 	if err != nil {
@@ -89,10 +89,10 @@ func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
 // the saved server version against the client version.
 func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 	var serverVersion int64
-	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1 AND deleted_at IS NULL", id)
+	err := pg.Get(&serverVersion, "SELECT version FROM sync_entities WHERE id = $1", id)
 	if err != nil {
 		fmt.Println("Get version error: ", err.Error(), "id: ", id)
-		return false, nil
+		return false, err
 	}
 
 	return clientVersion == serverVersion, nil
@@ -101,7 +101,7 @@ func (pg *Postgres) CheckVersion(id string, clientVersion int64) (bool, error) {
 // GetUpdatesForType retrieves sync entities of a data type where it's mtime
 // is later than the client token.
 func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFolders bool, clientID string) (entities []SyncEntity, err error) {
-	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3 AND deleted_at IS NULL"
+	stmt := "SELECT * FROM sync_entities WHERE data_type_id = $1 AND mtime > $2 AND client_id = $3"
 	if !fetchFolders {
 		stmt += " AND folder = false"
 	}
