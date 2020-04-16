@@ -69,20 +69,21 @@ func (pg *Postgres) InsertSyncEntities(entities []*SyncEntity) error {
 }
 
 // UpdateSyncEntity updates a sync entity in postgres database.
-func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) error {
-	stmt := `UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = version + 1, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id`
-
-	result, err := pg.NamedExec(stmt, *entity)
+func (pg *Postgres) UpdateSyncEntity(entity *SyncEntity) (int64, error) {
+	stmt, err := pg.PrepareNamed("UPDATE sync_entities SET deleted_at = :deleted_at, parent_id = :parent_id, old_parent_id = :old_parent_id, version = version + 1, mtime = :mtime, name = :name, non_unique_name = :non_unique_name, specifics = :specifics, folder = :folder, unique_position = :unique_position WHERE id = :id RETURNING version")
 	if err != nil {
-		return err
+		return -1, err
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if rowsAffected == 0 || err != nil {
-		return errors.New("No rows updated")
+	var version int64
+	err = stmt.Get(&version, *entity)
+	if err != nil {
+		return -1, err
 	}
-
-	return nil
+	if version < 1 {
+		return -1, errors.New("No rows updated")
+	}
+	return version, nil
 }
 
 // CheckVersion get the sync entry with id saved in the database and checks

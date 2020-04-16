@@ -14,23 +14,6 @@ type Client struct {
 	ExpireAt int64  `db:"expire_at"`
 }
 
-// TODO: remove this.
-// InsertClient create and insert a new client into clients table.
-func (pg *Postgres) InsertClient(id string, token string, expireAt int64) (*Client, error) {
-	client := Client{ID: id, Token: token, ExpireAt: expireAt}
-	stmt, err := pg.PrepareNamed(
-		"INSERT INTO clients(id, token, expire_at) VALUES(:id, :token, :expire_at) " +
-			"ON CONFLICT (id) DO UPDATE SET token = :token, expire_at = :expire_at " +
-			"RETURNING *")
-	if err != nil {
-		return nil, err
-	}
-
-	var savedClient Client
-	err = stmt.Get(&savedClient, client)
-	return &savedClient, err
-}
-
 // InsertClientToken creates and inserts a new client into clients table if not
 // exists, and inserts the token into tokens table.
 func (pg *Postgres) InsertClientToken(id string, token string, expireAt int64) error {

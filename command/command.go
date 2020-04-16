@@ -132,14 +132,16 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				continue
 			}
 
+			// Initialized to client's current version
+			version := entityToCommit.Version
 			if *v.Version == 0 { // Create
-				entityToCommit.Version++
 				err = pg.InsertSyncEntity(entityToCommit)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
 				}
+				version++
 			} else { // Update
 				match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
 				if err != nil {
@@ -154,8 +156,11 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 					entryRsp.ResponseType = &rspType
 					continue
 				}
-				entityToCommit.Version++
-				err = pg.UpdateSyncEntity(entityToCommit)
+				// It is possible that multiple devices are trying to update the same
+				// entity by passing the version check above, so we use the incremented
+				// version returning by the database operation instead of directly
+				// adding 1 to client's current version here.
+				version, err = pg.UpdateSyncEntity(entityToCommit)
 				if err != nil {
 					fmt.Println("UpdateSyncEntity:", err.Error())
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
@@ -171,7 +176,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			if entityToCommit.ParentID.Valid {
 				entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
 			}
-			entryRsp.Version = &entityToCommit.Version
+			entryRsp.Version = &version
 			if entityToCommit.Name.Valid {
 				entryRsp.Name = utils.String(entityToCommit.Name.String)
 			}
