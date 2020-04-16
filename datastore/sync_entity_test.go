@@ -49,13 +49,13 @@ func (suite *SyncEntityTestSuite) SetupTest() {
 
 	// Insert a dummy client
 	client := &Client{ID: "id", Token: uuid.NewV4().String(),
-		ExpireAt: time.Now().Add(time.Duration(5 * time.Minute)).Unix()}
+		ExpireAt: utils.UnixMilli(time.Now().Add(time.Duration(5 * time.Minute)))}
 	_, err = pg.InsertClient(client.ID, client.Token, client.ExpireAt)
 	suite.Require().NoError(err, "Insert dummy client should succeed")
 }
 
 func createSyncEntity() *SyncEntity {
-	t := time.Now().Unix()
+	t := utils.UnixMilli(time.Now())
 	bytes := []byte{}
 	return &SyncEntity{
 		ID:                     uuid.NewV4().String(),
@@ -97,7 +97,7 @@ func (suite *SyncEntityTestSuite) TestInsertSyncEntity() {
 	suite.Require().Error(err, "Insert duplicate server_defined_unique_tag should fail")
 
 	entity.ID = insertedID
-	entity.DeletedAt = utils.Int64OrNull(utils.Int64(time.Now().Unix()))
+	entity.DeletedAt = utils.Int64OrNull(utils.Int64(utils.UnixMilli(time.Now())))
 	err = pg.UpdateSyncEntity(entity)
 	suite.Require().NoError(err, "Update sync entity should succeed")
 	entity.ID = uuid.NewV4().String()
@@ -117,7 +117,7 @@ func (suite *SyncEntityTestSuite) TestInsertSyncEntity() {
 	suite.Require().Error(err, "Insert duplicate client_defined_unique_tag should fail")
 
 	entity.ID = insertedID
-	entity.DeletedAt = utils.Int64OrNull(utils.Int64(time.Now().Unix()))
+	entity.DeletedAt = utils.Int64OrNull(utils.Int64(utils.UnixMilli(time.Now())))
 	err = pg.UpdateSyncEntity(entity)
 	suite.Require().NoError(err, "Update sync entity should succeed")
 	entity.ID = uuid.NewV4().String()
@@ -145,7 +145,7 @@ func (suite *SyncEntityTestSuite) TestUpdateSyncEntity() {
 	suite.Assert().Equal(sql.NullString{String: "test2", Valid: true}, name)
 
 	// Test soft delete
-	t := time.Now().Unix()
+	t := utils.UnixMilli(time.Now())
 	entity.DeletedAt = utils.Int64OrNull(utils.Int64(t))
 	err = pg.UpdateSyncEntity(entity)
 	suite.Require().NoError(err, "Update sync entity should succeed")
@@ -155,7 +155,7 @@ func (suite *SyncEntityTestSuite) TestUpdateSyncEntity() {
 	suite.Assert().Equal(sql.NullInt64{Int64: t, Valid: true}, deletedAt)
 
 	// Delete a deleted entry should error out
-	t = time.Now().Unix()
+	t = utils.UnixMilli(time.Now())
 	entity.DeletedAt = utils.Int64OrNull(utils.Int64(t))
 	err = pg.UpdateSyncEntity(entity)
 	suite.Require().EqualError(err, "No rows updated")
@@ -238,7 +238,7 @@ func (suite *SyncEntityTestSuite) TestGetServerDefinedUniqueEntity() {
 
 	// Insert a deleted entry with server tag.
 	entity2 := createSyncEntity()
-	entity2.DeletedAt = utils.Int64OrNull(utils.Int64(time.Now().Unix()))
+	entity2.DeletedAt = utils.Int64OrNull(utils.Int64(utils.UnixMilli(time.Now())))
 	entity2.ServerDefinedUniqueTag = utils.StringOrNull(utils.String("server"))
 	err = pg.InsertSyncEntity(entity2)
 	suite.Require().NoError(err, "Insert sync entity should succeed")

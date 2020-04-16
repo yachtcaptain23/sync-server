@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brave-experiments/sync-server/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/suite"
 )
@@ -47,43 +48,43 @@ func (suite *ClientTestSuite) TestInsertClient() {
 	suite.Require().NoError(err)
 
 	// Insert a non-exist client
-	client := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: time.Now().Unix()}
+	client := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: utils.UnixMilli(time.Now())}
 	var savedClient *Client
 	savedClient, err = pg.InsertClient(client.ID, client.Token, client.ExpireAt)
 	suite.Require().NoError(err, "Insert client should succeed")
 	suite.Assert().Equal(client, savedClient)
 
 	// Insert a client with the same ID should update the entry
-	client2 := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: time.Now().Unix()}
+	client2 := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: utils.UnixMilli(time.Now())}
 	savedClient, err = pg.InsertClient(client2.ID, client2.Token, client2.ExpireAt)
 	suite.Require().NoError(err, "Insert client should succeed")
 	suite.Assert().Equal(client2, savedClient)
 }
 
-func (suite *ClientTestSuite) TestGetClient() {
+func (suite *ClientTestSuite) TestGetClientID() {
 	pg, err := NewPostgres(false)
 	suite.Require().NoError(err)
 
 	// Empty string and nil error should be returned when it's not a valid token.
 	var id string
-	client := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: time.Now().Unix()}
-	id, err = pg.GetClient(client.Token)
+	client := &Client{ID: "id", Token: uuid.NewV4().String(), ExpireAt: utils.UnixMilli(time.Now())}
+	id, err = pg.GetClientID(client.Token)
 	suite.Require().NoError(err, "Get client should succeed")
 	suite.Assert().Equal("", id)
 
 	// Outdated token should return empty string and nil error.
 	_, err = pg.InsertClient(client.ID, client.Token, client.ExpireAt)
 	suite.Require().NoError(err, "Insert client should succeed")
-	id, err = pg.GetClient(client.Token)
+	id, err = pg.GetClientID(client.Token)
 	suite.Require().NoError(err, "Get client should succeed")
 	suite.Assert().Equal("", id)
 
 	// Target client ID and nil error should be returned for a valid token.
 	client2 := &Client{ID: "id2", Token: uuid.NewV4().String(),
-		ExpireAt: time.Now().Add(time.Duration(5 * time.Minute)).Unix()}
+		ExpireAt: utils.UnixMilli(time.Now().Add(time.Duration(5 * time.Minute)))}
 	_, err = pg.InsertClient(client2.ID, client2.Token, client2.ExpireAt)
 	suite.Require().NoError(err, "Insert client should succeed")
-	id, err = pg.GetClient(client2.Token)
+	id, err = pg.GetClientID(client2.Token)
 	suite.Require().NoError(err, "Get client should succeed")
 	suite.Assert().Equal(client2.ID, id)
 }
