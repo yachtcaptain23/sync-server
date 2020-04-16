@@ -148,6 +148,8 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 					continue
 				}
 				if !match {
+					fmt.Println("Conflict ID:", entityToCommit.ID)
+					fmt.Println("Entry to commit:", v)
 					rspType := sync_pb.CommitResponse_CONFLICT
 					entryRsp.ResponseType = &rspType
 					continue
@@ -155,6 +157,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				entityToCommit.Version++
 				err = pg.UpdateSyncEntity(entityToCommit)
 				if err != nil {
+					fmt.Println("UpdateSyncEntity:", err.Error())
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
