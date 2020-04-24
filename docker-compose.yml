@@ -13,6 +13,7 @@ services:
       - ./migrations:/src/migrations
     depends_on:
       - postgres
+      - dynamo-local
     networks:
       - sync
   web:
@@ -34,5 +35,11 @@ services:
     environment:
       - "POSTGRES_USER=sync_server"
       - "POSTGRES_PASSWORD=password"
+    networks:
+      - sync
+  dynamo-local:
+    build:
+      context: .
+      dockerfile: dynamo.Dockerfile
     networks:
       - sync
