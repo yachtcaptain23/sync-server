@@ -57,9 +57,9 @@ func setupRouter(ctx context.Context, logger *zerolog.Logger) (context.Context, 
 
 	pg, err := datastore.NewPostgres(true)
 	if err != nil {
-		fmt.Println("WTF, error = ", err.Error())
+		fmt.Println("database open error = ", err.Error())
 		raven.CaptureErrorAndWait(err, nil)
-		log.Warn().Err(err).Msg("Database open failed!")
+		log.Panic().Err(err).Msg("Database open failed!")
 	}
 
 	r.Mount("/v2", controller.SyncRouter(pg))
