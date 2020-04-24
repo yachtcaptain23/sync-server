@@ -111,16 +111,6 @@ func (pg *Postgres) GetUpdatesForType(dataType int32, clientToken int64, fetchFo
 	return
 }
 
-// GetServerDefinedUniqueEntity returns the entity where client_id and
-// server_defined_unique_tag is equal to the parameters.
-func (pg *Postgres) GetServerDefinedUniqueEntity(tag string, clientID string) (*SyncEntity, error) {
-	var entity SyncEntity
-	err := pg.Get(&entity,
-		"SELECT * FROM sync_entities WHERE server_defined_unique_tag = $1 AND client_id = $2 AND deleted_at IS NULL",
-		tag, clientID)
-	return &entity, err
-}
-
 // IsServerDefinedUniqueEntitiesReady returns wehter sync entities with server
 // defined unique tags for a specific client are ready in DB.
 func (pg *Postgres) IsServerDefinedUniqueEntitiesReady(tags []string, clientID string) (bool, error) {
