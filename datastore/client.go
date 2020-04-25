@@ -16,7 +16,7 @@ type Client struct {
 
 // InsertClientToken creates and inserts a new client into clients table if not
 // exists, and inserts the token into tokens table.
-func (pg *Postgres) InsertClientToken(id string, token string, expireAt int64) error {
+func (pg *Postgres) InsertToken(id string, token string, expireAt int64) error {
 	tx, err := pg.DB.Beginx()
 	if err != nil {
 		return err

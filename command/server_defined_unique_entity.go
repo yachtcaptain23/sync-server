@@ -40,13 +40,13 @@ func createServerDefinedUniqueEntity(name string, serverDefinedTag string, clien
 
 // CreateServerDefinedUniqueEntities creates the server defined unique tag
 // entities if it is not in the DB yet for a specific client.
-func CreateServerDefinedUniqueEntities(pg *datastore.Postgres, clientID string) error {
+func CreateServerDefinedUniqueEntities(db datastore.Datastore, clientID string) error {
 	var entities []*datastore.SyncEntity
 	tags := []string{
 		nigoriTag, bookmarksTag, otherBookmarksTag, syncedBookmarksTag, bookmarkBarTag}
 	// Check if they're existed already for this client.
 	// If yes, just return directly.
-	ready, err := pg.IsServerDefinedUniqueEntitiesReady(tags, clientID)
+	ready, err := db.IsServerDefinedUniqueEntitiesReady(tags, clientID)
 	if err != nil || ready {
 		return err
 	}
@@ -87,5 +87,5 @@ func CreateServerDefinedUniqueEntities(pg *datastore.Postgres, clientID string) 
 	}
 
 	// Start a transaction to insert all server defined unique entities
-	return pg.InsertSyncEntities(entities)
+	return db.InsertSyncEntities(entities)
 }

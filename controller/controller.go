@@ -16,7 +16,7 @@ import (
 )
 
 // SyncRouter add routers for command and auth endpoint requests.
-func SyncRouter(datastore *datastore.Postgres) chi.Router {
+func SyncRouter(datastore datastore.Datastore) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/command/", Command(datastore))
 	r.Post("/auth", Auth(datastore))
@@ -46,10 +46,10 @@ func Timestamp(w http.ResponseWriter, r *http.Request) {
 }
 
 // Auth handles authentication requests from sync clients.
-func Auth(pg *datastore.Postgres) http.HandlerFunc {
+func Auth(db datastore.Datastore) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("AUTH")
-		body, err := auth.Authenticate(r, pg)
+		body, err := auth.Authenticate(r, db)
 		if err != nil {
 			fmt.Println("authenticate error:", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -60,10 +60,10 @@ func Auth(pg *datastore.Postgres) http.HandlerFunc {
 }
 
 // Command handles GetUpdates and Commit requests from sync clients.
-func Command(pg *datastore.Postgres) http.HandlerFunc {
+func Command(db datastore.Datastore) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Authorize
-		clientID, err := auth.Authorize(pg, r)
+		clientID, err := auth.Authorize(db, r)
 		if clientID == "" {
 			if err != nil {
 				fmt.Println("error while authorizing:", err.Error())
@@ -101,7 +101,7 @@ func Command(pg *datastore.Postgres) http.HandlerFunc {
 		}
 
 		pbRsp := &sync_pb.ClientToServerResponse{}
-		err = command.HandleClientToServerMessage(pb, pbRsp, pg, clientID)
+		err = command.HandleClientToServerMessage(pb, pbRsp, db, clientID)
 		if err != nil {
 			fmt.Println(err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)

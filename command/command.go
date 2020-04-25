@@ -21,13 +21,13 @@ const (
 // handleGetUpdatesRequest handles GetUpdatesMessage and fills
 // GetUpdatesResponse. Target sync entities in the database will be updated or
 // deleted based on the client's requests.
-func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, pg *datastore.Postgres, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
+func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.GetUpdatesResponse, db datastore.Datastore, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("GET UPDATE RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
 	if *guMsg.GetUpdatesOrigin == sync_pb.SyncEnums_NEW_CLIENT {
 		fmt.Println("NEW CLIENT")
-		err := CreateServerDefinedUniqueEntities(pg, clientID)
+		err := CreateServerDefinedUniqueEntities(db, clientID)
 		if err != nil {
 			fmt.Println("Create server defined unique entities error:", err.Error())
 			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
@@ -83,9 +83,9 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
 		}
 
-		entities, err := pg.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
+		entities, err := db.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
 		if err != nil {
-			fmt.Println("pg.GetUpdatesForType error:", err.Error())
+			fmt.Println("db.GetUpdatesForType error:", err.Error())
 			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
 			return &errCode, nil
 		}
@@ -114,7 +114,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 
 // handleCommitRequest handles the commit message and fills the commit response.
 // New sync entity is created and inserted into the database.
-func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, pg *datastore.Postgres, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
+func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.CommitResponse, db datastore.Datastore, clientID string) (*sync_pb.SyncEnums_ErrorType, error) {
 	fmt.Println("COMMIT RECEIVED")
 	errCode := sync_pb.SyncEnums_SUCCESS // default value, might be changed later
 
@@ -135,7 +135,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// Initialized to client's current version
 			version := entityToCommit.Version
 			if *v.Version == 0 { // Create
-				err = pg.InsertSyncEntity(entityToCommit)
+				err = db.InsertSyncEntity(entityToCommit)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
@@ -143,7 +143,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				}
 				version++
 			} else { // Update
-				match, err := pg.CheckVersion(entityToCommit.ID, entityToCommit.Version)
+				match, err := db.CheckVersion(entityToCommit.ID, entityToCommit.Version)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
@@ -160,7 +160,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				// entity by passing the version check above, so we use the incremented
 				// version returning by the database operation instead of directly
 				// adding 1 to client's current version here.
-				version, err = pg.UpdateSyncEntity(entityToCommit)
+				version, err = db.UpdateSyncEntity(entityToCommit)
 				if err != nil {
 					fmt.Println("UpdateSyncEntity:", err.Error())
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
@@ -191,7 +191,7 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 
 // HandleClientToServerMessage handles the protobuf ClientToServerMessage and
 // fills the protobuf ClientToServerResponse.
-func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, pg *datastore.Postgres, clientID string) error {
+func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, db datastore.Datastore, clientID string) error {
 	// Create ClientToServerResponse and fill general fields for both GU and
 	// Commit.
 	pbRsp.StoreBirthday = utils.String(storeBirthday)
@@ -204,11 +204,11 @@ func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_
 	if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {
 		guRsp := &sync_pb.GetUpdatesResponse{}
 		pbRsp.GetUpdates = guRsp
-		pbRsp.ErrorCode, err = handleGetUpdatesRequest(pb.GetUpdates, guRsp, pg, clientID)
+		pbRsp.ErrorCode, err = handleGetUpdatesRequest(pb.GetUpdates, guRsp, db, clientID)
 	} else if *pb.MessageContents == sync_pb.ClientToServerMessage_COMMIT {
 		commitRsp := &sync_pb.CommitResponse{}
 		pbRsp.Commit = commitRsp
-		pbRsp.ErrorCode, err = handleCommitRequest(pb.Commit, commitRsp, pg, clientID)
+		pbRsp.ErrorCode, err = handleCommitRequest(pb.Commit, commitRsp, db, clientID)
 	} else {
 		return fmt.Errorf("unsupported message type of ClientToServerMessage")
 	}
