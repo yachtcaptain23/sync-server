@@ -83,7 +83,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
 		}
 
-		entities, err := db.GetUpdatesForType(int(*fromProgressMarker.DataTypeId), token, fetchFolders, clientID)
+		entities, err := db.GetUpdatesForType(int(*fromProgressMarker.DataTypeId), token, fetchFolders, clientID, int64(maxGUBatchSize)-int64(len(guRsp.Entries)))
 		if err != nil {
 			fmt.Println("db.GetUpdatesForType error:", err.Error())
 			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR

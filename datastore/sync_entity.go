@@ -18,10 +18,6 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-const (
-	maxBatchGetItemSize int64 = 100
-)
-
 // SyncEntity is used to marshal and unmarshal sync items in dynamoDB.
 type SyncEntity struct {
 	ClientID               string
@@ -281,7 +277,7 @@ func (dynamo *Dynamo) UpdateSyncEntity(entity *SyncEntity) (bool, error) {
 // To do this in dynamoDB, we use (ClientID, DataType#Mtime) as GSI to get a
 // list of (ClientID, ID) primary keys with the given condition, then read the
 // actual sync item using the list of primary keys.
-func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFolders bool, clientID string) ([]SyncEntity, error) {
+func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFolders bool, clientID string, maxSize int64) ([]SyncEntity, error) {
 	syncEntities := []SyncEntity{}
 
 	// Get (ClientID, ID) pairs which are updates after mtime for a data type,
@@ -312,7 +308,7 @@ func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFo
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      aws.String(projPk),
 		TableName:                 aws.String(table),
-		Limit:                     aws.Int64(maxBatchGetItemSize), // TODO: change to maxGUSize
+		Limit:                     aws.Int64(maxSize),
 	}
 
 	out, err := dynamo.Query(input)
@@ -324,9 +320,6 @@ func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFo
 	}
 
 	// Use return (ClientID, ID) primary keys to get the actual items.
-	// TODO: Change the above limit of query input and use BatchGetItemPages if
-	// we want to be able to get more than 100 items back which is the maximum
-	// size of items a BatchGetItem request could return.
 	batchInput := &dynamodb.BatchGetItemInput{
 		RequestItems: map[string]*dynamodb.KeysAndAttributes{
 			table: {
@@ -334,12 +327,18 @@ func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFo
 			},
 		},
 	}
-	batchOut, err := dynamo.BatchGetItem(batchInput)
+
+	var outAv []map[string]*dynamodb.AttributeValue
+	err = dynamo.BatchGetItemPages(batchInput,
+		func(batchOut *dynamodb.BatchGetItemOutput, last bool) bool {
+			outAv = append(outAv, batchOut.Responses[table]...)
+			return true
+		})
 	if err != nil {
 		return syncEntities, err
 	}
 
-	err = dynamodbattribute.UnmarshalListOfMaps(batchOut.Responses[table], &syncEntities)
+	err = dynamodbattribute.UnmarshalListOfMaps(outAv, &syncEntities)
 	return syncEntities, err
 }
 

@@ -14,7 +14,7 @@ type Datastore interface {
 	UpdateSyncEntity(entity *SyncEntity) (bool, error)
 	// Get updates for a specific type which are modified after the time of
 	// client token for a given client.
-	GetUpdatesForType(dataType int, clientToken int64, fetchFolders bool, clientID string) ([]SyncEntity, error)
+	GetUpdatesForType(dataType int, clientToken int64, fetchFolders bool, clientID string, maxSize int64) ([]SyncEntity, error)
 	// Check if a server-defined unique tag is in the datastore.
 	HasServerDefinedUniqueTag(clientID string, tag string) (bool, error)
 }
