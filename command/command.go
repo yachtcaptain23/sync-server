@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
-	"github.com/brave-experiments/sync-server/utils"
 )
 
 const (
@@ -83,7 +83,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 			return &errCode, fmt.Errorf("Failed at decoding token value %v", token)
 		}
 
-		entities, err := db.GetUpdatesForType(*fromProgressMarker.DataTypeId, token, fetchFolders, clientID)
+		entities, err := db.GetUpdatesForType(int(*fromProgressMarker.DataTypeId), token, fetchFolders, clientID)
 		if err != nil {
 			fmt.Println("db.GetUpdatesForType error:", err.Error())
 			errCode = sync_pb.SyncEnums_TRANSIENT_ERROR
@@ -132,38 +132,26 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 				continue
 			}
 
-			// Initialized to client's current version
-			version := entityToCommit.Version
-			if *v.Version == 0 { // Create
+			*entityToCommit.Version++
+			if *entityToCommit.Version == 1 { // Create
 				err = db.InsertSyncEntity(entityToCommit)
 				if err != nil {
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
 					entryRsp.ResponseType = &rspType
 					continue
 				}
-				version++
 			} else { // Update
-				match, err := db.CheckVersion(entityToCommit.ID, entityToCommit.Version)
-				if err != nil {
-					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
-					entryRsp.ResponseType = &rspType
-					continue
-				}
-				if !match {
-					fmt.Println("Conflict ID:", entityToCommit.ID)
-					fmt.Println("Entry to commit:", v)
-					rspType := sync_pb.CommitResponse_CONFLICT
-					entryRsp.ResponseType = &rspType
-					continue
-				}
-				// It is possible that multiple devices are trying to update the same
-				// entity by passing the version check above, so we use the incremented
-				// version returning by the database operation instead of directly
-				// adding 1 to client's current version here.
-				version, err = db.UpdateSyncEntity(entityToCommit)
+				conflict, err := db.UpdateSyncEntity(entityToCommit)
 				if err != nil {
 					fmt.Println("UpdateSyncEntity:", err.Error())
 					rspType := sync_pb.CommitResponse_TRANSIENT_ERROR
+					entryRsp.ResponseType = &rspType
+					continue
+				}
+				if conflict {
+					fmt.Println("Conflict ID:", entityToCommit.ID)
+					fmt.Println("Entry to commit:", entityToCommit)
+					rspType := sync_pb.CommitResponse_CONFLICT
 					entryRsp.ResponseType = &rspType
 					continue
 				}
@@ -172,18 +160,12 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 			// Prepare success response
 			rspType := sync_pb.CommitResponse_SUCCESS
 			entryRsp.ResponseType = &rspType
-			entryRsp.IdString = utils.String(entityToCommit.ID)
-			if entityToCommit.ParentID.Valid {
-				entryRsp.ParentIdString = utils.String(entityToCommit.ParentID.String)
-			}
-			entryRsp.Version = &version
-			if entityToCommit.Name.Valid {
-				entryRsp.Name = utils.String(entityToCommit.Name.String)
-			}
-			if entityToCommit.NonUniqueName.Valid {
-				entryRsp.NonUniqueName = utils.String(entityToCommit.NonUniqueName.String)
-			}
-			entryRsp.Mtime = &entityToCommit.Mtime
+			entryRsp.IdString = aws.String(entityToCommit.ID)
+			entryRsp.Version = entityToCommit.Version
+			entryRsp.ParentIdString = entityToCommit.ParentID
+			entryRsp.Name = entityToCommit.Name
+			entryRsp.NonUniqueName = entityToCommit.NonUniqueName
+			entryRsp.Mtime = entityToCommit.Mtime
 		}
 	}
 	return &errCode, nil
@@ -194,11 +176,11 @@ func handleCommitRequest(commitMsg *sync_pb.CommitMessage, commitRsp *sync_pb.Co
 func HandleClientToServerMessage(pb *sync_pb.ClientToServerMessage, pbRsp *sync_pb.ClientToServerResponse, db datastore.Datastore, clientID string) error {
 	// Create ClientToServerResponse and fill general fields for both GU and
 	// Commit.
-	pbRsp.StoreBirthday = utils.String(storeBirthday)
+	pbRsp.StoreBirthday = aws.String(storeBirthday)
 	pbRsp.ClientCommand = &sync_pb.ClientCommand{
-		SetSyncPollInterval:        utils.Int32(setSyncPollInterval),
-		MaxCommitBatchSize:         utils.Int32(maxCommitBatchSize),
-		SessionsCommitDelaySeconds: utils.Int32(sessionsCommitDelaySeconds)}
+		SetSyncPollInterval:        aws.Int32(setSyncPollInterval),
+		MaxCommitBatchSize:         aws.Int32(maxCommitBatchSize),
+		SessionsCommitDelaySeconds: aws.Int32(sessionsCommitDelaySeconds)}
 
 	var err error
 	if *pb.MessageContents == sync_pb.ClientToServerMessage_GET_UPDATES {

@@ -41,14 +41,12 @@ func Authenticate(r *http.Request, db datastore.Datastore) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("post form:", r.PostForm)
 	req := &Request{
 		PublicKey:       r.PostFormValue("client_id"),
 		Timestamp:       r.PostFormValue("timestamp"),
 		SignedTimestamp: r.PostFormValue("client_secret"),
 	}
 
-	fmt.Println("sig")
 	// Verify the signature.
 	publicKey, err := hex.DecodeString(req.PublicKey)
 	if err != nil {
@@ -63,7 +61,6 @@ func Authenticate(r *http.Request, db datastore.Datastore) ([]byte, error) {
 		return nil, err
 	}
 	if !ed25519.Verify(publicKey, timestampBytes, signedTimestamp) {
-		fmt.Println("signature verification failed")
 		return nil, fmt.Errorf("signature verification failed")
 	}
 
@@ -72,19 +69,16 @@ func Authenticate(r *http.Request, db datastore.Datastore) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse timestamp error")
 	}
-	fmt.Println("Verify timestamp:", timestamp)
 
 	// Verify the timestamp is not outdated
 	if utils.UnixMilli(time.Now())-timestamp > timestampMaxDuration {
-		fmt.Println("timestamp is outdated")
 		return nil, fmt.Errorf("timestamp is outdated")
 	}
 
-	fmt.Println("insert")
 	// Create a new token, save it in DB, and return it.
 	expireAt := utils.UnixMilli(time.Now().Add(time.Duration(tokenMaxDuration) * time.Millisecond))
 	token := uuid.NewV4().String()
-	err = db.InsertToken(req.PublicKey, token, expireAt)
+	err = db.InsertClientToken(req.PublicKey, token, expireAt)
 	if err != nil {
 		return nil, err
 	}

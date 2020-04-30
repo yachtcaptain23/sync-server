@@ -55,14 +55,14 @@ func setupRouter(ctx context.Context, logger *zerolog.Logger) (context.Context, 
 		r.Use(middleware.RequestLogger(logger))
 	}
 
-	pg, err := datastore.NewPostgres(true)
+	db, err := datastore.NewDynamo()
 	if err != nil {
 		fmt.Println("database open error = ", err.Error())
 		raven.CaptureErrorAndWait(err, nil)
 		log.Panic().Err(err).Msg("Database open failed!")
 	}
 
-	r.Mount("/v2", controller.SyncRouter(pg))
+	r.Mount("/v2", controller.SyncRouter(db))
 	r.Get("/metrics", middleware.Metrics())
 
 	return ctx, r

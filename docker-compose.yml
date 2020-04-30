@@ -12,10 +12,12 @@ services:
     volumes:
       - ./migrations:/src/migrations
     depends_on:
-      - postgres
       - dynamo-local
     networks:
       - sync
+    environment:
+      - AWS_ACCESS_KEY_ID=#
+      - AWS_SECRET_ACCESS_KEY=#
   web:
     build:
       context: .
@@ -25,21 +27,17 @@ services:
     ports:
       - "8295:8295"
     depends_on:
-      - postgres
+      - dynamo-local
     networks:
       - sync
-  postgres:
-    image: postgres:12.2
-    ports:
-      - "5432:5432"
     environment:
-      - "POSTGRES_USER=sync_server"
-      - "POSTGRES_PASSWORD=password"
-    networks:
-      - sync
+      - AWS_ACCESS_KEY_ID=#
+      - AWS_SECRET_ACCESS_KEY=#
   dynamo-local:
     build:
       context: .
       dockerfile: dynamo.Dockerfile
+    ports:
+      - "8000:8000"
     networks:
       - sync

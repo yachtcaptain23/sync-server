@@ -3,6 +3,7 @@ package command
 import (
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/brave-experiments/sync-server/datastore"
 	"github.com/brave-experiments/sync-server/sync_pb"
 	"github.com/brave-experiments/sync-server/utils"
@@ -31,7 +32,7 @@ func createServerDefinedUniqueEntity(name string, serverDefinedTag string, clien
 
 	pbEntity := &sync_pb.SyncEntity{
 		Ctime: &now, Mtime: &now, Deleted: &deleted, Folder: &folder,
-		Name: utils.String(name), ServerDefinedUniqueTag: utils.String(serverDefinedTag),
+		Name: aws.String(name), ServerDefinedUniqueTag: aws.String(serverDefinedTag),
 		Version: &version, ParentIdString: &parentID,
 		IdString: &idString, Specifics: specifics}
 
@@ -42,11 +43,9 @@ func createServerDefinedUniqueEntity(name string, serverDefinedTag string, clien
 // entities if it is not in the DB yet for a specific client.
 func CreateServerDefinedUniqueEntities(db datastore.Datastore, clientID string) error {
 	var entities []*datastore.SyncEntity
-	tags := []string{
-		nigoriTag, bookmarksTag, otherBookmarksTag, syncedBookmarksTag, bookmarkBarTag}
 	// Check if they're existed already for this client.
 	// If yes, just return directly.
-	ready, err := db.IsServerDefinedUniqueEntitiesReady(tags, clientID)
+	ready, err := db.HasServerDefinedUniqueTag(clientID, nigoriTag)
 	if err != nil || ready {
 		return err
 	}
