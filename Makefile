@@ -20,5 +20,8 @@ clean:
 docker:
 	docker-compose build
 
+docker-up:
+	docker-compose up
+
 docker-test:
 	docker-compose -f docker-compose.yml run --rm dev make test
