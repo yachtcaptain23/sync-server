@@ -282,7 +282,7 @@ func (dynamo *Dynamo) GetUpdatesForType(dataType int, clientToken int64, fetchFo
 
 	// Get (ClientID, ID) pairs which are updates after mtime for a data type,
 	// sorted by dataType#mTime. e.g. sorted by mtime since dataType is the same.
-	dataTypeMtimeLowerBound := strconv.Itoa(dataType) + "#" + strconv.FormatInt(clientToken, 10)
+	dataTypeMtimeLowerBound := strconv.Itoa(dataType) + "#" + strconv.FormatInt(clientToken+1, 10)
 	dataTypeMtimeUpperBound := strconv.Itoa(dataType+1) + "#0"
 	pkCond := expression.Key(clientIDDataTypeMtimeIdxPk).Equal(expression.Value(clientID))
 	skCond := expression.KeyBetween(

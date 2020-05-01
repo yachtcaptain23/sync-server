@@ -105,7 +105,7 @@ func handleGetUpdatesRequest(guMsg *sync_pb.GetUpdatesMessage, guRsp *sync_pb.Ge
 		// If entities are appended, use the lastest mtime as returned token.
 		if j != 0 {
 			guRsp.NewProgressMarker[i].Token = make([]byte, binary.MaxVarintLen64)
-			binary.PutVarint(guRsp.NewProgressMarker[i].Token, *guRsp.Entries[j-1].Mtime)
+			binary.PutVarint(guRsp.NewProgressMarker[i].Token, *entities[j-1].Mtime)
 		}
 	}
 
