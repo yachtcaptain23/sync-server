@@ -1,0 +1,15 @@
+language: go
+notifications:
+  email: false
+go:
+- 1.14
+services:
+- docker
+before_install:
+- go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+install:
+- go mod download
+before_script:
+- make lint
+script:
+- make docker && maker docker-test
